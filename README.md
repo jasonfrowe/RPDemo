@@ -279,3 +279,126 @@ int main(void)
 }
 ```
 
+At this point, if you build and run the code, you should see your player sprite displayed in the center of the screen!  Congratulations, you have successfully loaded a sprite into XRAM and drawn it to the screen using Mode 5!  In the next section, we will start adding some interactivity and movement to our sprite.
+
+## Input System.
+
+We going to use ```input.c```, ```input.h```, ```player_controller.c```, and ```player_controller.h``` which have been designed to make handling inputs bit easier and also allow for custom key mappings for any gamepad you want to use.  I strongly recommend reading the Picocomputer documentation.  To get started add ```input.c``` and ```player_controller.c``` to CMakeLists.txt and include the headers in main.c.  
+
+We need to allocate XRAM to fetch the current state of the inputs.  You can choose any location in XRAM that is not being used by other assets.  In our constants.h file, we have allocated the beginning of XRAM for sprite data, so we can start our input state right after the sprite data.  Update your constants.h file to include the following:
+
+```c
+// RIA input buffers are provided at fixed XRAM addresses.
+#define GAMEPAD_INPUT   0xFF78  // 40 bytes for 4 gamepads
+#define KEYBOARD_INPUT  0xFFA0  // 32 bytes keyboard bitfield
+```
+
+and then update your main function look like:
+
+```c
+int main(void)
+{
+
+    // Initialize input
+    xreg(0, 0, 0, KEYBOARD_INPUT);
+    xreg(0, 0, 2, GAMEPAD_INPUT);
+
+    // Initialise graphics
+    if (!init_graphics()) {
+        puts("Fatal: graphics initialization failed");
+        return 1;
+    }
+    init_input_system();
+    player_controller_init();
+
+    // Main loop
+    while (true) {
+        // 1. SYNC
+        if (RIA.vsync == vsync_last) continue;
+        vsync_last = RIA.vsync;
+
+        // 2. INPUT
+        handle_input();
+
+        // 3. UPDATE
+        player_controller_update();
+    }
+
+    return 0;
+}
+```
+
+Let's break this down.  
+```c
+    // Initialize input
+    xreg(0, 0, 0, KEYBOARD_INPUT);
+    xreg(0, 0, 2, GAMEPAD_INPUT);
+```
+This sets up the XRAM addresses for the keyboard and gamepad inputs and enables the devices.  
+
+```c
+    init_input_system();
+    player_controller_init();
+```
+This initializes our input handling system and our player controller.  The input system will also look for ``JOYSTICK_SH.DAT``` and if it exists, it will load custom key mappings from that file.  This allows you to set up custom key mappings for any gamepad you want to use with your Picocomputer.  We will cover how to set up custom key mappings in a later section.
+
+In our VSYNC loop we have added:
+
+```c
+// 2. INPUT
+        handle_input();
+
+        // 3. UPDATE
+        player_controller_update();
+```
+The function ```handle_input()``` will read the current state of the inputs from XRAM and update the internal state of the input system.  The function ```player_controller_update()``` will read the current input state and update the position of the player sprite accordingly.  You can customize the logic in ```player_controller_update()``` to create different movement patterns or add additional actions based on the inputs.
+
+In ```sprite_mode5.c``` we add function to update the sprite location:
+
+```c
+void sprite_mode5_set_position(int16_t x, int16_t y)
+{
+    // Clamp X to valid screen range (0 to SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX)
+    if (x < 0) x = 0;
+    if (x > (int16_t)(SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX)) {
+        x = (int16_t)(SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX);
+    }
+    
+    // Clamp Y to valid screen range (0 to SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX)
+    if (y < 0) y = 0;
+    if (y > (int16_t)(SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX)) {
+        y = (int16_t)(SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX);
+    }
+    
+    // Update sprite position in XRAM
+    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, x_pos_px, x);
+    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, y_pos_px, y);
+}
+```
+
+and add an extern to the header file:
+
+```c
+void sprite_mode5_set_position(int16_t x, int16_t y);
+```
+
+The key here is,
+
+```c
+    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, x_pos_px, x);
+    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, y_pos_px, y);
+```
+We are directly updating the XRAM values for the sprite's position.  This is a powerful feature of the Picocomputer, as it allows us to update sprite properties directly from our game logic without needing to make expensive system calls.  By writing directly to XRAM, we can achieve very fast updates to our sprites, which is essential for smooth gameplay.
+
+At this point, you should be able to move your player sprite around the screen using the inputs you have set up.  You can customize the input handling logic in ```player_controller_update()```.  
+
+## Tilemaps and Backgrounds
+
+Each layer can have a fill and sprite component.  So far we have added a sprite to layer 2 (top).  Now we are going to add tiles to layers 0, 1 and 2 to add a slowly moving background, with a faster foreground to create a parallax effect.  The will we add a top layer for a HUD to show a score.  
+
+This will be done with ```tile_mode2.c``` and ```tile_mode2.h```.  You can added this to your CMakeLists.txt, add the header to main.c, and add ```tile_mode2_init();``` to ```init_graphics()``` just like we did with the sprite system.  In ```main.c``` we add ```tile_mode2_update_scroll();``` which will update the scroll position of the tilemaps to create a parallax scrolling effect.  The tile data is stored in XRAM and we can update it directly from our game logic just like we did with the sprites.  This allows us to create dynamic backgrounds that can change based on the player's actions or the game's state.
+
+
+
+
+

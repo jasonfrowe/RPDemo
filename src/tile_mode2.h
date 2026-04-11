@@ -1,0 +1,65 @@
+#ifndef TILE_MODE2_H
+#define TILE_MODE2_H
+
+// Palette extracted from Sprites/Tiles.png
+static const uint16_t tile_bg_palette[16] = {
+    0x0000, // transparent
+    0xA820,
+    0x0560,
+    0xAD60,
+    0x0035,
+    0xA835,
+    0x02B5,
+    0xAD75,
+    0x52AA,
+    0xFAAA,
+    0x57EA,
+    0xFFEA,
+    0x52BF,
+    0xFABF,
+    0x57FF,
+    0xFFFF,
+};
+
+static const uint16_t tile_fg_palette[16] = {
+    0x0000, // transparent
+    0xA820,
+    0x0560,
+    0xAD60,
+    0x0035,
+    0xA835,
+    0x02B5,
+    0xAD75,
+    0x52AA,
+    0xFAAA,
+    0x57EA,
+    0xFFEA,
+    0x52BF,
+    0xFABF,
+    0x57FF,
+    0xFFFF,
+};
+
+static const uint16_t tile_hud_palette[16] = {
+    0x0000, // transparent
+    0xA820,
+    0x0560,
+    0xAD60,
+    0x0035,
+    0xA835,
+    0x02B5,
+    0xAD75,
+    0x52AA,
+    0xFAAA,
+    0x57EA,
+    0xFFEA,
+    0x52BF,
+    0xFABF,
+    0x57FF,
+    0xFFFF,
+};
+
+void tile_mode2_init(void);
+void tile_mode2_update_scroll(void);
+
+#endif // TILE_MODE2_H

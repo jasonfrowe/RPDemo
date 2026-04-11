@@ -20,4 +20,7 @@ rp6502_executable(RPDemo
 target_sources(RPDemo PRIVATE
     src/main.c
     src/sprite_mode5.c
+    src/tile_mode2.c
+    src/input.c
+    src/player_controller.c
 )
