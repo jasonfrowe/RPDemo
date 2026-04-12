@@ -11,12 +11,12 @@ add_executable(RPDemo)
 
 # XRAM Assets
 rp6502_asset(RPDemo 0x10000 images/Player_4bpp.bin)
-rp6502_asset(RPDemo 0x10180 images/StarFields_BG_map.bin)
-rp6502_asset(RPDemo 0x10AE0 images/StarFields_FG_map.bin)
-rp6502_asset(RPDemo 0x11440 images/StarFields_HUD_map.bin)
-rp6502_asset(RPDemo 0x118F0 images/StarFields_tiles_4bpp.bin)
-rp6502_asset(RPDemo 0x138F0 images/Projectiles_4bpp.bin)
-rp6502_asset(RPDemo 0x13930 images/Enemies_4bpp.bin)
+rp6502_asset(RPDemo 0x10300 images/StarFields_BG_map.bin)
+rp6502_asset(RPDemo 0x10C60 images/StarFields_FG_map.bin)
+rp6502_asset(RPDemo 0x115C0 images/StarFields_HUD_map.bin)
+rp6502_asset(RPDemo 0x11A70 images/StarFields_tiles_4bpp.bin)
+rp6502_asset(RPDemo 0x13A70 images/Projectiles_4bpp.bin)
+rp6502_asset(RPDemo 0x13AB0 images/Enemies_4bpp.bin)
 rp6502_asset(RPDemo help src/help.txt)
 
 # ROM Assets
