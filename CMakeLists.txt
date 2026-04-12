@@ -36,6 +36,7 @@ target_sources(RPDemo PRIVATE
     src/game_state.c
     src/projectile.c
     src/enemy.c
+    src/score.c
     src/music.c
     src/opl.c
     src/vgm.c

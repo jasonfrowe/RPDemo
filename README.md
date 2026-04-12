@@ -9,7 +9,7 @@
 - [Tilemaps and Backgrounds](#tilemaps-and-backgrounds)
 - [Music](#music)
 - [Adding Bullets](#adding-bullets)
-- [Game Play Loop](#game-play-loop)
+- [Gameplay Loop](#gameplay-loop)
 
 ## Introduction
 
@@ -19,7 +19,7 @@ This is a demo game for the RP6502, built with the LLVM-MOS toolchain.  The game
 
 Get started by using the vscode-llvm-mos template from https://github.com/picocomputer/vscode-llvm-mos.  Find the "Use this template" button and follow the instructions to create a new repository.  
 
-Once you have your respository set up, we are going to update CMakeLists.txt to build the demo game.  Update the contents of CMakeLists.txt to have the name of the game you want to make.  In this example, we are going to make a game called RPDemo.  The CMakeLists.txt file should look something like this:
+Once you have your repository set up, we are going to update CMakeLists.txt to build the demo game.  Update the contents of CMakeLists.txt to have the name of the game you want to make.  In this example, we are going to make a game called RPDemo.  The CMakeLists.txt file should look something like this:
 
 ```cmake
 cmake_minimum_required(VERSION 3.18)
@@ -45,7 +45,7 @@ target_sources(RPDemo PRIVATE
 )
 ```
 
-At this point, you should be able to build the project in VScode with the build button and run it on your Picocomputer via F5 or the run button.  You can also run it from the command line with the following command:
+At this point, you should be able to build the project in VS Code with the build button and run it on your Picocomputer via F5 or the run button.  You can also run it from the command line with the following command:
 ```
 python3 ./tools/rp6502.py run build/RPDemo.rp6502
 ```
@@ -163,7 +163,7 @@ I personally like to track assets using a ```constants.h``` file.
 
 This file defines some constants for our game, including the screen dimensions and the memory layout for our sprite data.  We have defined a section of XRAM starting at 0x0000 for our sprite data, and we have allocated 128 bytes for our player sprite, which is a 16x16 pixel sprite at 4 bits per pixel (4bpp).  This means that each pixel takes up 4 bits, so we can fit two pixels in one byte.  Therefore, a 16x16 sprite will require 128 bytes of memory (16 * 16 * 4 bits / 8 bits per byte = 128 bytes).  If you use the Spreadsheet all the Hex math is done for you.  
 
-We have also defined XRAM space for the player's palette, which is 32 bytes (16 colors * 2 bytes per color = 32 bytes).  The palette will be stored at address 0xFC00.  We will load our custom palette data into this location in XRAM and then point the VGA system to it when we set up our sprite.  Notice that in CMakeFiles.txt we have placed the sprite at 0x10000, but in our constants.h we have defined the sprite data to start at 0x0000. The offset is handled by rp6502.h XRAM calls.
+We have also defined XRAM space for the player's palette, which is 32 bytes (16 colors * 2 bytes per color = 32 bytes).  The palette will be stored at address 0xFC00.  We will load our custom palette data into this location in XRAM and then point the VGA system to it when we set up our sprite.  Notice that in CMakeLists.txt we have placed the sprite at 0x10000, but in our constants.h we have defined the sprite data to start at 0x0000. The offset is handled by rp6502.h XRAM calls.
 
 Now let's create ```sprite_mode5.c``` and ````sprite_mode5.h```` files to handle the sprite drawing logic.  In these files, we will write functions to initialize the sprite system, load our sprite data into XRAM, and draw the sprite to the screen.  This will help us keep our main.c file clean and organized.  Here is an example of what the contents of these files might look like.  Here is the code for ```sprite_mode5.c```:
 
@@ -364,7 +364,7 @@ This sets the XRAM addresses for the keyboard and gamepad inputs and enables the
     init_input_system();
     player_controller_init();
 ```
-This initializes our input handling system and our player controller.  The input system will also look for ``JOYSTICK_SH.DAT``` and if it exists, it will load custom key mappings from that file.  This allows you to set up custom key mappings for any gamepad you want to use with your Picocomputer.  We will cover how to set up custom key mappings in a later section.
+This initializes our input handling system and our player controller.  The input system will also look for `JOYSTICK_SH.DAT` and if it exists, it will load custom key mappings from that file.  This allows you to set up custom key mappings for any gamepad you want to use with your Picocomputer.
 
 In our VSYNC loop we have added:
 
@@ -418,7 +418,7 @@ At this point, you should be able to move your player sprite around the screen u
 
 ## Tilemaps and Backgrounds
 
-Each layer can have a fill and sprite component.  So far we have added a sprite to layer 2 (top).  Now we are going to add tiles to layers 0, 1 and 2 to add a slowly moving background, with a faster foreground to create a parallax effect.  The will we add a top layer for a HUD to show a score.  
+Each layer can have a fill and sprite component.  So far we have added a sprite to layer 2 (top).  Now we are going to add tiles to layers 0, 1 and 2 to add a slowly moving background, with a faster foreground to create a parallax effect.  Then we add a top layer for a HUD to show a score.  
 
 This will be done with ```tile_mode2.c``` and ```tile_mode2.h```.  You can add ```tile_mode2.c``` to your CMakeLists.txt, add the header to main.c, and add ```tile_mode2_init();``` to ```init_graphics()``` just like we did with the sprite system.  In ```main.c``` we add ```tile_mode2_update_scroll();``` to our main loop which will update the scroll position of the tilemaps to create a parallax scrolling effect.  The tile data is stored in XRAM and we can update it directly from our game logic just like we did with the sprites.  This allows us to create dynamic backgrounds that can change based on the player's actions or the game's state. 
 
@@ -457,14 +457,14 @@ int main(void)
 ```
 
 This code will not work until we set up the tilemaps and load the tile data into XRAM.  Let's start by looking at the assets we need for the tilemaps.  We have a number of new assets:
-- ```images/StarFields_BG_map.bin``` - This contains the tile index for each 8x8 tile in the background layer (layer 0).  It is a 40x60 tilemap.  We can up to 256 tiles, so we need 1 byte per tile, which means this tilemap requires 2400 bytes of memory (40 tiles * 60 tiles * 1 byte per tile = 2400 bytes).  Notice that the tilemap is larger than the screen size, this allows us to scroll the background to create a parallax effect.
+- ```images/StarFields_BG_map.bin``` - This contains the tile index for each 8x8 tile in the background layer (layer 0).  It is a 40x60 tilemap.  We can have up to 256 tiles, so we need 1 byte per tile, which means this tilemap requires 2400 bytes of memory (40 tiles * 60 tiles * 1 byte per tile = 2400 bytes).  Notice that the tilemap is larger than the screen size, this allows us to scroll the background to create a parallax effect.
 - ```images/StarFields_FG_map.bin``` - This will be our foreground layer (layer 1) and it is also a 40x60 tilemap with 1 byte per tile, so it also requires 2400 bytes of memory.
 - ```images/StarFields_HUD_map.bin``` - This will be our HUD layer (layer 2) and will be a 40x30 tilemap, since we don't need to scroll it.  
-- ```images/StarFields_tiles_4bpp.bin``` - This contains the pixel data for our tiles.  Each tile is 8x8 pixels and we are using a 4bpp format, which means each pixel takes up 4 bits, so we can fit two pixels in one byte.  Therefore, each tile requires 32 bytes of memory (8 * 8 * 4 bits / 8 bits per byte = 32 bytes).  If we have a tileset with 256 tiles, this means our tileset will require 8192 bytes of memory (256 tiles * 32 bytes per tile = 8192 bytes). In this example we have 48 tiles, so our tileset requires 1536 bytes of memory (48 tiles * 32 bytes per tile = 1536 bytes).  
+- ```images/StarFields_tiles_4bpp.bin``` - This contains the pixel data for our tiles.  Each tile is 8x8 pixels and we are using a 4bpp format, which means each pixel takes up 4 bits, so we can fit two pixels in one byte.  Therefore, each tile requires 32 bytes of memory (8 * 8 * 4 bits / 8 bits per byte = 32 bytes).  In this project we use a 256-tile set, so our tileset requires 8192 bytes of memory (256 tiles * 32 bytes per tile = 8192 bytes).  
 
 Note, we are going to share 1 set of tiles for all 3 layers, but you can have a different tileset for each layer if you want.  We will learn how to generate tile maps later on, for now we are just learning how to use them.  The tilemaps and tileset are loaded into XRAM as assets in our CMakeLists.txt file, just like we did with the sprite.  We will then set up the tilemaps in XRAM and point the VGA system to them.  Once that is done, we can update the scroll position of the tilemaps in our main loop to create a parallax scrolling effect.
 
-Let's example part of the code for initializing the tilemaps in ```tile_mode2.c```:
+Let's look at part of the code for initializing the tilemaps in ```tile_mode2.c```:
 
 ```c
     TILE_BG_CONFIG = PLAYER_CONFIG + sizeof(vga_mode5_sprite_t); // Add after sprite config
@@ -559,7 +559,7 @@ Next we update ```constants.h``` to include the new assets and the XRAM layout f
 #define STARFIELD_HUD_HEIGHT    30                 // Height of starfield HUD in tiles
 
 #define STARFIELD_TILES_DATA   (STARFIELD_HUD_DATA + STARFIELD_HUD_SIZE) // Address for starfield tile bitmaps
-#define STARFIELD_TILES_SIZE    0x0600U            // 1536 bytes (48 tiles at 32 bytes each for 4bpp)
+#define STARFIELD_TILES_SIZE    0x2000U            // 8192 bytes (256 tiles at 32 bytes each for 4bpp)
 
 
 #define SPRITE_DATA_END        (STARFIELD_TILES_DATA + STARFIELD_TILES_SIZE) // End of sprite data
@@ -593,11 +593,11 @@ Notice how we have defined the XRAM layout for all of our assets, including the 
 Use the spreadsheet to keep track of your XRAM layout and do the hex math for you.  This will help you avoid mistakes and make it easier to manage your assets as your game grows in complexity.  Next we update CMakeLists.txt based on the output of the spreadsheet to include the new source files:
 
 ```cmake
-rp6502_asset(RPStarHopper 0x10000 images/Player_4bpp.bin)
-rp6502_asset(RPStarHopper 0x10180 images/StarFields_BG_map.bin)
-rp6502_asset(RPStarHopper 0x10AE0 images/StarFields_FG_map.bin)
-rp6502_asset(RPStarHopper 0x11440 images/StarFields_HUD_map.bin)
-rp6502_asset(RPStarHopper 0x118F0 images/StarFields_tiles_4bpp.bin)
+rp6502_asset(RPDemo 0x10000 images/Player_4bpp.bin)
+rp6502_asset(RPDemo 0x10180 images/StarFields_BG_map.bin)
+rp6502_asset(RPDemo 0x10AE0 images/StarFields_FG_map.bin)
+rp6502_asset(RPDemo 0x11440 images/StarFields_HUD_map.bin)
+rp6502_asset(RPDemo 0x118F0 images/StarFields_tiles_4bpp.bin)
 ```
 
 If we look back at our main loop, we are calling ```tile_mode2_update_scroll();``` every frame.  This function will update the scroll position of the tilemaps to create a parallax scrolling effect.  The background layer will scroll slower than the foreground layer, which creates a sense of depth and movement in the scene.  You can customize the scrolling logic in ```tile_mode2_update_scroll()``` to create different scrolling patterns or to scroll based on player movement or other game events.  With the tilemaps set up and scrolling, you should now see a starfield background with a faster scrolling foreground layer, and a HUD layer at the top of the screen. 
@@ -623,8 +623,8 @@ int main(void)
 {
 
     // Initialize input
-    xregn(0, 0, 0, 1, KEYBOARD_INPUT);
-    xregn(0, 0, 2, 1, GAMEPAD_INPUT);
+    xreg(0, 0, 0, KEYBOARD_INPUT);
+    xreg(0, 0, 2, GAMEPAD_INPUT);
 
     // Initialise graphics
     if (!init_graphics()) {
@@ -654,7 +654,7 @@ int main(void)
 }
 ```
 
-Note that the player only supports VGM files that use OPL2 commands.  The player does not support VGZ.  Note, that VGZ is just gzipped VGM, so you can easily convert a VGZ file to VGM by unzipping it.  
+Note that the player only supports VGM files that use OPL2 commands.  The player does not support VGZ directly.  VGZ is simply gzipped VGM, so you can convert a VGZ file to VGM by unzipping it.  
 
 This is great!  We have implemented sprites, tilemaps, and music in our game!  We have a lot of tools at our disposal to create a fun and engaging game.  In the next section, we will start adding some polish to our game by implementing animations and palette swapping effects.
 
@@ -666,7 +666,7 @@ If you look at ```Player_4bpp.bin``` you will see that it contains 3 frames of a
 
 We can also create palette swapping effects by updating the palette data in XRAM.  For example, we could change the player's colors when they take damage or pick up a power-up by updating the palette entries in XRAM.  This allows us to create dynamic visual effects without needing to change the sprite data itself, which can save memory and allow for more complex animations.  
 
-In this example, we will change palettes to show when he player is moving up, down, left or right.  This will give the player some visual feedback on their movement and make the game feel more responsive.
+In this example, we will change palettes to show when the player is moving up, down, left or right.  This will give the player some visual feedback on their movement and make the game feel more responsive.
 
 
 ```c
@@ -719,7 +719,7 @@ void player_controller_update(void)
 }
 ```
 
-We then use the boolan flags for movement to determine which frame of the sprite to show.  If the player is moving left, we show the left movement frame, if they are moving right we show the right movement frame, and if they are not moving left or right we show the idle frame.  This allows us to create a simple animation for the player sprite based on their movement.  You can expand on this logic to create more complex animations or to change the palette based on different conditions.  Here is our updated ```sprite_mode5.c``` file with the animation and palette swapping logic added:
+We then use the boolean flags for movement to determine which frame of the sprite to show.  If the player is moving left, we show the left movement frame, if they are moving right we show the right movement frame, and if they are not moving left or right we show the idle frame.  This allows us to create a simple animation for the player sprite based on their movement.  You can expand on this logic to create more complex animations or to change the palette based on different conditions.  Here is our updated ```sprite_mode5.c``` file with the animation and palette swapping logic added:
 
 ```c
 #include <rp6502.h>
@@ -916,7 +916,7 @@ Here is the layout for the projectile sprite data and configuration in XRAM:
 #define PROJECTILE_SPRITE_SIZE_PX   8                 // Projectile sprite is 8x8 pixels
 #define PROJECTILE_FRAME_SIZE   0x0020U            // 32 bytes per 8x8 4bpp frame
 #define PROJECTILE_FRAME_COUNT  2                  // 2 frames for projectile
-#define MAX_PROJECTILES         64                  // Max number of projectiles on screen at once
+#define MAX_PROJECTILES         32                  // Max number of projectiles on screen at once
 
 #define SPRITE_DATA_END        (PROJECTILE_DATA + PROJECTILE_DATA_SIZE) // End of sprite data
 ```
@@ -1012,7 +1012,7 @@ void projectile_update(void)
 }
 ```
 
-Our main.c file only needs a few update to add '''#include "projectile.h"''' and call ```projectile_init()``` in ```init_graphics``` and add ```projectile_update()``` to our main loop.  With this code in place, you should now be able to fire projectiles from the player's position and see them move upwards on the screen until they go off-screen and are deactivated.  You can customize the projectile behavior, speed, and appearance by modifying the projectile data and update logic as needed for your game.
+Our main.c file only needs a few updates: add `#include "projectile.h"`, call ```projectile_init()``` in ```init_graphics```, and add ```projectile_update()``` to the main loop.  With this code in place, you should now be able to fire projectiles from the player's position and see them move upwards on the screen until they go off-screen and are deactivated.  You can customize the projectile behavior, speed, and appearance by modifying the projectile data and update logic as needed for your game.
 
 ```c
 // Main loop
@@ -1032,7 +1032,7 @@ Our main.c file only needs a few update to add '''#include "projectile.h"''' and
     }
 ```
 
-## Game Play Loop
+## Gameplay Loop
 
 Right now our screen is very busy.  We have our title-card, music, flying starfield background, and a player sprite that we can move around.  This is great for testing our systems, but it's not really a game yet.  We need to add some structure to our game by implementing a game loop with different states for the title screen, gameplay, and game over screen.  This will allow us to create a more complete game experience with a clear flow from start to finish.  We can define an enum for our game states and then use a switch statement in our main loop to handle the logic for each state.  This will allow us to show the title screen when the game starts, transition to the gameplay state when the player presses a button, and then show a game over screen when the player loses.  This structure will make it easier to manage the different parts of our game and create a more polished experience for the player.
 
@@ -1231,6 +1231,53 @@ if (game_state_get() == GAME_STATE_PLAYING) {
 ```
 
 With this in place, the game now has enemy waves, multi-type spawning, and working player-bullet collision.
+
+### 6. Score System
+
+Next, we add score rendering and point awards for enemy hits.
+
+Score display location:
+- HUD tile positions `(17,1)` through `(22,1)`
+- 6 digits, initialized as `000000`
+- Tile indices `19..28` are digits `0..9`
+
+In `tile_mode2.c` we expose:
+
+```c
+void tile_mode2_set_score(uint32_t score)
+```
+
+This function clamps to `999999` and writes six tiles into the HUD tilemap (`STARFIELD_HUD_DATA`), mapping each decimal digit to tile index `19 + digit`.
+
+In `score.c` we keep a running score and update HUD digits whenever score changes:
+
+```c
+void score_init(void);
+void score_add_enemy_kill(uint8_t enemy_type);
+```
+
+Point rules are:
+- enemy type 0 = 10 points
+- enemy type 1 = 15 points
+- enemy type 2 = 20 points
+- ...
+- capped at 40 points for higher types
+
+The cap keeps values aligned with your requested top score per kill and still supports future type expansion.
+
+Collision integration happens in `enemy_update()` right where bullet hit is confirmed:
+
+```c
+score_add_enemy_kill(enemies[i].type);
+```
+
+Main initialization now includes:
+
+```c
+score_init();
+```
+
+so score is immediately drawn as `000000` before gameplay starts.
 
 
 

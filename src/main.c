@@ -10,6 +10,7 @@
 #include "music.h"
 #include "projectile.h"
 #include "enemy.h"
+#include "score.h"
 
 static bool init_graphics(void)
 {
@@ -27,6 +28,7 @@ static bool init_graphics(void)
     sprite_mode5_init_enemies();
     projectile_init();
     enemy_init();
+    score_init();
 
     return true;
 }
@@ -37,8 +39,8 @@ int main(void)
 {
 
     // Initialize input
-    xregn(0, 0, 0, 1, KEYBOARD_INPUT);
-    xregn(0, 0, 2, 1, GAMEPAD_INPUT);
+    xreg(0, 0, 0, KEYBOARD_INPUT);
+    xreg(0, 0, 2, GAMEPAD_INPUT);
 
     // Initialise graphics
     if (!init_graphics()) {

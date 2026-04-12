@@ -29,6 +29,10 @@ static bool warp_tiles_replaced = false;
 #define FG_SLOWDOWN_STEP_HALF_PX 2
 #define FG_SLOWDOWN_STEP_FRAMES 24
 #define TITLE_RAINBOW_STEP_FRAMES 6
+#define SCORE_DIGITS 6
+#define SCORE_TILE_X 17
+#define SCORE_TILE_Y 1
+#define SCORE_TILE_INDEX_BASE 19
 
 #ifndef COLOR_FROM_RGB8
 #define COLOR_FROM_RGB8(r,g,b) (((b>>3)<<11)|((g>>3)<<6)|(r>>3))
@@ -203,8 +207,30 @@ void tile_mode2_init(void) {
     }
 
     tile_mode2_write_hud_palette_entry(2, title_rainbow_palette[0]);
+    tile_mode2_set_score(0);
 
     puts("Mode2 tiles ready");
+}
+
+void tile_mode2_set_score(uint32_t score)
+{
+    int8_t i;
+
+    if (score > 999999u) {
+        score = 999999u;
+    }
+
+    for (i = (SCORE_DIGITS - 1); i >= 0; --i) {
+        uint8_t digit = (uint8_t)(score % 10u);
+        score /= 10u;
+        tile_mode2_write_tile(
+            STARFIELD_HUD_DATA,
+            STARFIELD_HUD_WIDTH,
+            (uint8_t)(SCORE_TILE_X + i),
+            SCORE_TILE_Y,
+            (uint8_t)(SCORE_TILE_INDEX_BASE + digit)
+        );
+    }
 }
 
 void tile_mode2_start_gameplay_transition(void)

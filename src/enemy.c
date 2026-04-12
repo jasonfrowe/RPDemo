@@ -3,6 +3,7 @@
 #include "constants.h"
 #include "enemy.h"
 #include "projectile.h"
+#include "score.h"
 #include "sprite_mode5.h"
 
 // Zig-zag horizontal bounds (keep sprites fully on-screen)
@@ -102,6 +103,7 @@ void enemy_update(void)
                 ENEMY_SPRITE_SIZE_PX,
                 ENEMY_SPRITE_SIZE_PX
             )) {
+            score_add_enemy_kill(enemies[i].type);
             enemies[i].active = false;
             sprite_mode5_set_enemy(i, -32, -32, enemies[i].type);
             continue;
