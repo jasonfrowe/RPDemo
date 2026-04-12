@@ -9,10 +9,10 @@
 #define SPRITE_DATA_START       0x0000U            // Starting address in XRAM for sprite data
 
 #define PLAYER_DATA            (SPRITE_DATA_START) // Address for main tile bitmap data
-#define PLAYER_DATA_SIZE        0x0180U            // 384 bytes (3 frames 16x16 at 4bpp)
+#define PLAYER_DATA_SIZE        0x0300U            // 768 bytes (6 frames 16x16 at 4bpp)
 #define PLAYER_SPRITE_SIZE_PX   16                 // Player sprite is 16x16 pixels
 #define PLAYER_FRAME_SIZE       0x0080U            // 128 bytes per 16x16 4bpp frame
-#define PLAYER_FRAME_COUNT      3                  // idle, left, right
+#define PLAYER_FRAME_COUNT      6                  // idle, left, right, explode frames (3, 4, 5)
 
 #define STARFIELD_BG_DATA      (PLAYER_DATA + PLAYER_DATA_SIZE) // Address for starfield background tilemap
 #define STARFIELD_BG_SIZE       0x0960U            // 2400 bytes (40x60 tilemap)
@@ -37,15 +37,40 @@
 #define PROJECTILE_SPRITE_SIZE_PX   8                 // Projectile sprite is 8x8 pixels
 #define PROJECTILE_FRAME_SIZE   0x0020U            // 32 bytes per 8x8 4bpp frame
 #define PROJECTILE_FRAME_COUNT  2                  // 2 frames for projectile
-#define MAX_PROJECTILES         32                  // Max number of projectiles on screen at once
+#define MAX_PROJECTILES         40                  // Max number of projectiles on screen at once
 #define MAX_PLAYER_PROJECTILES  8                   // Slots 0..(MAX_PLAYER_PROJECTILES-1) are reserved for the player
 
 // Projectile movement
 #define PROJECTILE_SPEED_PX     4                   // Pixels per frame
+#define PLAYER_FIRE_RATE        20                  // Frames between player shots (lower = faster)
 #define HUD_TOP_PX              24                  // Rows 0-23 are HUD; bullets expire when y < HUD_TOP_PX
 
+// Player health and damage tuning
+#define PLAYER_MAX_HEALTH           48
+#define PLAYER_LOW_HEALTH_THRESHOLD 12
+#define PLAYER_BULLET_DAMAGE         4
+#define PLAYER_CONTACT_DAMAGE        8
+#define PLAYER_HIT_COOLDOWN_FRAMES  24
+#define PLAYER_HIT_FLASH_FRAMES     18
+
+// Player destruction animation uses frames 3, 4, 5
+#define PLAYER_DEATH_FRAME_START    3
+#define PLAYER_DEATH_FRAME_END      5
+#define PLAYER_DEATH_FRAME_STEP_FRAMES 8
+
+// HUD health bar mapping: tiles (17,2)..(22,2), tile index 39 (full) .. 47 (empty)
+#define HEALTH_BAR_TILE_X          17
+#define HEALTH_BAR_TILE_Y           2
+#define HEALTH_BAR_TILE_COUNT       6
+#define HEALTH_BAR_TILE_FULL_INDEX 39
+#define HEALTH_BAR_TILE_EMPTY_INDEX 47
+#define HEALTH_PER_BAR_TILE         8
+
+// Game-over timing
+#define GAME_OVER_TIMEOUT_FRAMES 3600
+
 #define ENEMY_DATA             (PROJECTILE_DATA + PROJECTILE_DATA_SIZE) // Address for enemy sprite data
-#define ENEMY_DATA_SIZE        0x0380U              // 896 bytes (7 frames 16x16 at 4bpp)
+#define ENEMY_DATA_SIZE        0x0780U              // 1920 bytes (15 frames 16x16 at 4bpp)
 #define ENEMY_SPRITE_SIZE_PX   16
 #define ENEMY_FRAME_SIZE       0x0080U              // 128 bytes per 16x16 4bpp frame
 #define ENEMY_TYPE_COUNT       7

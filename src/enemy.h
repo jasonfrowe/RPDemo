@@ -1,6 +1,7 @@
 #ifndef ENEMY_H
 #define ENEMY_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 // --- Tunable wave parameters ---
@@ -15,5 +16,9 @@
 
 void enemy_init(void);
 void enemy_update(void);
+bool enemy_hit_test_player(int16_t x, int16_t y, int16_t width, int16_t height);
+void enemy_start_game_over_animation(void);
+void enemy_stop_game_over_animation(void);
+bool enemy_is_game_over_animation_complete(void);
 
 #endif // ENEMY_H

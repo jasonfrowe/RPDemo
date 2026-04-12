@@ -34,6 +34,39 @@ static bool init_graphics(void)
 }
 
 uint8_t vsync_last = 0;
+static uint16_t game_over_timer = 0;
+static uint8_t hud_health_last = 0xFF;
+
+static void reset_to_title_scene(void)
+{
+    enemy_stop_game_over_animation();
+    projectile_init();
+    enemy_init();
+    score_init();
+    player_controller_reset_for_new_run();
+    tile_mode2_start_game_over_transition();
+    tile_mode2_restore_hud_from_rom();
+    tile_mode2_set_score(0);
+    tile_mode2_set_health(PLAYER_MAX_HEALTH);
+    hud_health_last = PLAYER_MAX_HEALTH;
+    tile_mode2_update_health_fx(false, false);
+    music_set_track("music/RESOURCE.001.vgm");
+    game_over_timer = 0;
+}
+
+static void start_playing_scene(void)
+{
+    projectile_init();
+    enemy_init();
+    score_init();
+    player_controller_reset_for_new_run();
+    tile_mode2_set_score(0);
+    tile_mode2_set_health(PLAYER_MAX_HEALTH);
+    hud_health_last = PLAYER_MAX_HEALTH;
+    tile_mode2_update_health_fx(false, false);
+    tile_mode2_start_gameplay_transition();
+    music_set_track("music/RESOURCE.005.vgm");
+}
 
 int main(void)
 {
@@ -51,6 +84,8 @@ int main(void)
     init_input_system();
     player_controller_init();
     game_state_init();
+    tile_mode2_set_health(player_controller_get_health());
+    hud_health_last = player_controller_get_health();
 
     // Main loop
     while (true) {
@@ -67,8 +102,9 @@ int main(void)
             );
 
             if (transition == GAME_TRANSITION_START_GAME) {
-                tile_mode2_start_gameplay_transition();
-                music_set_track("music/RESOURCE.005.vgm");
+                start_playing_scene();
+            } else if (transition == GAME_TRANSITION_RETURN_TO_TITLE) {
+                reset_to_title_scene();
             }
         }
 
@@ -81,9 +117,62 @@ int main(void)
             tile_mode2_update_scroll();
         }
         if (game_state_get() == GAME_STATE_PLAYING) {
+            int16_t player_x;
+            int16_t player_y;
+            uint8_t player_health;
+
             player_controller_update();
             projectile_update();
             enemy_update();
+
+            player_controller_get_position(&player_x, &player_y);
+
+            if (player_controller_can_take_damage()) {
+                if (projectile_hit_test_player(player_x, player_y, PLAYER_SPRITE_SIZE_PX, PLAYER_SPRITE_SIZE_PX)) {
+                    player_controller_apply_damage(PLAYER_BULLET_DAMAGE);
+                }
+            }
+
+            if (player_controller_can_take_damage()) {
+                if (enemy_hit_test_player(player_x, player_y, PLAYER_SPRITE_SIZE_PX, PLAYER_SPRITE_SIZE_PX)) {
+                    player_controller_apply_damage(PLAYER_CONTACT_DAMAGE);
+                }
+            }
+
+            player_health = player_controller_get_health();
+            if (player_health != hud_health_last) {
+                hud_health_last = player_health;
+                tile_mode2_set_health(player_health);
+            }
+            tile_mode2_update_health_fx(
+                player_controller_is_damage_flash_active(),
+                player_controller_is_low_health()
+            );
+
+            if (player_controller_is_destroyed()) {
+                if (game_state_enter_game_over() == GAME_TRANSITION_ENTER_GAME_OVER) {
+                    projectile_init();
+                    enemy_start_game_over_animation();
+                    tile_mode2_start_game_over_transition();
+                    tile_mode2_restore_hud_from_rom();
+                    tile_mode2_set_health(0);
+                    tile_mode2_update_health_fx(false, true);
+                    music_set_track("music/RESOURCE.011.vgm");
+                    game_over_timer = GAME_OVER_TIMEOUT_FRAMES;
+                }
+            }
+        } else if (game_state_get() == GAME_STATE_GAME_OVER) {
+            enemy_update();
+            tile_mode2_update_health_fx(false, true);
+
+            if (game_over_timer > 0) {
+                game_over_timer--;
+            }
+
+            if (game_over_timer == 0) {
+                game_state_init();
+                reset_to_title_scene();
+            }
         }
     }
 

@@ -136,6 +136,37 @@ bool projectile_hit_test_enemy(int16_t x, int16_t y, int16_t width, int16_t heig
     return false;
 }
 
+bool projectile_hit_test_player(int16_t x, int16_t y, int16_t width, int16_t height)
+{
+    int16_t player_right = (int16_t)(x + width);
+    int16_t player_bottom = (int16_t)(y + height);
+
+    for (uint8_t i = FIRST_ENEMY_PROJECTILE_SLOT; i < MAX_PROJECTILES; i++) {
+        int16_t bullet_left;
+        int16_t bullet_top;
+        int16_t bullet_right;
+        int16_t bullet_bottom;
+
+        if (!projectiles[i].active) continue;
+        if (projectiles[i].owner != PROJECTILE_OWNER_ENEMY) continue;
+
+        bullet_left = (int16_t)(projectiles[i].x_q8 >> Q8_SHIFT);
+        bullet_top = (int16_t)(projectiles[i].y_q8 >> Q8_SHIFT);
+        bullet_right = (int16_t)(bullet_left + PROJECTILE_SPRITE_SIZE_PX);
+        bullet_bottom = (int16_t)(bullet_top + PROJECTILE_SPRITE_SIZE_PX);
+
+        if (bullet_right <= x || bullet_left >= player_right ||
+            bullet_bottom <= y || bullet_top >= player_bottom) {
+            continue;
+        }
+
+        projectile_deactivate(i);
+        return true;
+    }
+
+    return false;
+}
+
 void projectile_update(void)
 {
     for (uint8_t i = 0; i < MAX_PROJECTILES; i++) {

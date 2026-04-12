@@ -40,7 +40,7 @@
 
 #define TYPE1_MIDPOINT_Y   (SCREEN_HEIGHT / 2)
 #define TYPE1_SHOTS_PER_ENEMY 6
-#define TYPE1_FIRE_INTERVAL_FRAMES 3
+#define TYPE1_FIRE_INTERVAL_FRAMES 10
 #define TYPE0_INTER_SPAWN_FRAMES 10
 #define TYPE3_MIN_TARGET_Y (HUD_TOP_PX + 40)
 #define TYPE3_MAX_TARGET_Y 120
@@ -48,11 +48,18 @@
 #define TYPE3_WAVE_FIRE_INTERVAL 8
 #define TYPE6_DETONATE_DIST_X 40
 #define TYPE6_DETONATE_DIST_Y 40
+#define AIM_LEAD_MIN_FRAMES 3
+#define AIM_LEAD_MAX_FRAMES 10
+#define AIM_MAX_LEAD_PER_AXIS 6
 
 #define TYPE5_FORMATION_SPACING_X 28
 #define TYPE5_FORMATION_Y        (HUD_TOP_PX + 24)
 #define TYPE5_STEP_DOWN_Q8       TO_Q8(12)
 #define TYPE5_STEP_DOWN_SPEED_Q8 ENEMY_SLOW_SPEED_Q8
+
+#define GAME_OVER_LETTER_COUNT 8
+#define GAME_OVER_FIRST_FRAME 7
+#define GAME_OVER_LETTER_SPEED_Q8 ENEMY_MEDIUM_SPEED_Q8
 
 typedef struct {
     bool    active;
@@ -96,6 +103,24 @@ static int32_t formation_anchor_x_q8;
 static int32_t formation_anchor_y_q8;
 static int16_t formation_vx_q8;
 static int32_t formation_step_down_remaining_q8;
+static int16_t tracked_player_x;
+static int16_t tracked_player_y;
+static int16_t tracked_player_vx;
+static int16_t tracked_player_vy;
+static bool player_tracking_initialized;
+static bool game_over_mode;
+static bool game_over_animation_complete;
+
+typedef struct {
+    bool active;
+    int32_t x_q8;
+    int32_t y_q8;
+    int32_t target_x_q8;
+    int32_t target_y_q8;
+    uint8_t frame;
+} GameOverLetter;
+
+static GameOverLetter game_over_letters[GAME_OVER_LETTER_COUNT];
 
 static const int8_t radial_dirs[8][2] = {
     { 8,  0},
@@ -243,37 +268,193 @@ static void enemy_get_bullet_origin(uint8_t slot, int16_t *x, int16_t *y)
     *y = (int16_t)(enemy_y + ((ENEMY_SPRITE_SIZE_PX - PROJECTILE_SPRITE_SIZE_PX) / 2));
 }
 
-static bool enemy_fire_aimed(uint8_t slot, int16_t speed_q8)
+static int16_t enemy_clamp16(int16_t value, int16_t min_value, int16_t max_value)
+{
+    if (value < min_value) {
+        return min_value;
+    }
+    if (value > max_value) {
+        return max_value;
+    }
+    return value;
+}
+
+static bool enemy_q8_move_towards(int32_t *x_q8, int32_t *y_q8, int32_t target_x_q8, int32_t target_y_q8, int16_t speed_q8)
+{
+    int32_t dx = target_x_q8 - *x_q8;
+    int32_t dy = target_y_q8 - *y_q8;
+    int32_t adx = (dx < 0) ? -dx : dx;
+    int32_t ady = (dy < 0) ? -dy : dy;
+    int32_t scale = (adx > ady) ? adx : ady;
+
+    if (adx <= speed_q8 && ady <= speed_q8) {
+        *x_q8 = target_x_q8;
+        *y_q8 = target_y_q8;
+        return true;
+    }
+
+    if (scale == 0) {
+        return true;
+    }
+
+    *x_q8 += (dx * speed_q8) / scale;
+    *y_q8 += (dy * speed_q8) / scale;
+    return false;
+}
+
+static void enemy_setup_game_over_letter(uint8_t index, int16_t start_x, int16_t start_y, int16_t target_x, int16_t target_y)
+{
+    game_over_letters[index].active = true;
+    game_over_letters[index].x_q8 = TO_Q8(start_x);
+    game_over_letters[index].y_q8 = TO_Q8(start_y);
+    game_over_letters[index].target_x_q8 = TO_Q8(target_x);
+    game_over_letters[index].target_y_q8 = TO_Q8(target_y);
+    game_over_letters[index].frame = (uint8_t)(GAME_OVER_FIRST_FRAME + index);
+
+    sprite_mode5_set_enemy(index, start_x, start_y, game_over_letters[index].frame);
+}
+
+static void enemy_update_game_over_letters(void)
+{
+    bool all_done = true;
+
+    for (uint8_t i = 0; i < GAME_OVER_LETTER_COUNT; ++i) {
+        int16_t draw_x;
+        int16_t draw_y;
+
+        if (!game_over_letters[i].active) {
+            continue;
+        }
+
+        if (!enemy_q8_move_towards(
+            &game_over_letters[i].x_q8,
+            &game_over_letters[i].y_q8,
+            game_over_letters[i].target_x_q8,
+            game_over_letters[i].target_y_q8,
+            GAME_OVER_LETTER_SPEED_Q8
+        )) {
+            all_done = false;
+        }
+
+        draw_x = FROM_Q8(game_over_letters[i].x_q8);
+        draw_y = FROM_Q8(game_over_letters[i].y_q8);
+        sprite_mode5_set_enemy(i, draw_x, draw_y, game_over_letters[i].frame);
+    }
+
+    game_over_animation_complete = all_done;
+}
+
+static void enemy_update_player_tracking(void)
+{
+    int16_t current_x;
+    int16_t current_y;
+    int16_t measured_vx;
+    int16_t measured_vy;
+
+    player_controller_get_center_position(&current_x, &current_y);
+
+    if (!player_tracking_initialized) {
+        tracked_player_vx = 0;
+        tracked_player_vy = 0;
+        tracked_player_x = current_x;
+        tracked_player_y = current_y;
+        player_tracking_initialized = true;
+        return;
+    }
+
+    measured_vx = (int16_t)(current_x - tracked_player_x);
+    measured_vy = (int16_t)(current_y - tracked_player_y);
+
+    // Smooth per-frame velocity to reduce jittery over/under-leading.
+    tracked_player_vx = (int16_t)(((int32_t)tracked_player_vx * 3 + measured_vx) / 4);
+    tracked_player_vy = (int16_t)(((int32_t)tracked_player_vy * 3 + measured_vy) / 4);
+    tracked_player_x = current_x;
+    tracked_player_y = current_y;
+}
+
+static int16_t enemy_get_aim_lead_frames(uint8_t slot, int16_t speed_q8)
 {
     int16_t bullet_x;
     int16_t bullet_y;
-    int16_t player_x;
-    int16_t player_y;
+    int16_t dx;
+    int16_t dy;
+    int16_t distance;
+    int16_t speed_px;
+    int16_t lead_frames;
+
+    enemy_get_bullet_origin(slot, &bullet_x, &bullet_y);
+
+    dx = (int16_t)(tracked_player_x - bullet_x);
+    dy = (int16_t)(tracked_player_y - bullet_y);
+    distance = enemy_abs16(dx);
+    if (enemy_abs16(dy) > distance) {
+        distance = enemy_abs16(dy);
+    }
+
+    speed_px = (int16_t)(speed_q8 >> Q8_SHIFT);
+    if (speed_px <= 0) {
+        speed_px = 1;
+    }
+
+    lead_frames = (int16_t)((distance / speed_px) / 2);
+    return enemy_clamp16(lead_frames, AIM_LEAD_MIN_FRAMES, AIM_LEAD_MAX_FRAMES);
+}
+
+static void enemy_get_predicted_player_center(int16_t *x, int16_t *y, int16_t lead_frames)
+{
+    int16_t lead_vx = tracked_player_vx;
+    int16_t lead_vy = tracked_player_vy;
+    int16_t lead_x;
+    int16_t lead_y;
+
+    lead_vx = enemy_clamp16(lead_vx, (int16_t)-AIM_MAX_LEAD_PER_AXIS, AIM_MAX_LEAD_PER_AXIS);
+    lead_vy = enemy_clamp16(lead_vy, (int16_t)-AIM_MAX_LEAD_PER_AXIS, AIM_MAX_LEAD_PER_AXIS);
+
+    lead_x = (int16_t)(tracked_player_x + (lead_vx * lead_frames));
+    lead_y = (int16_t)(tracked_player_y + (lead_vy * lead_frames));
+
+    lead_x = enemy_clamp16(lead_x, 0, (int16_t)(SCREEN_WIDTH - 1));
+    lead_y = enemy_clamp16(lead_y, HUD_TOP_PX, (int16_t)(SCREEN_HEIGHT - 1));
+
+    *x = lead_x;
+    *y = lead_y;
+}
+
+static bool enemy_fire_aimed(uint8_t slot, int16_t speed_q8)
+{
+        int16_t lead_frames;
+    int16_t bullet_x;
+    int16_t bullet_y;
+    int16_t target_x;
+    int16_t target_y;
     int16_t vx_q8;
     int16_t vy_q8;
 
     enemy_get_bullet_origin(slot, &bullet_x, &bullet_y);
-    player_controller_get_center_position(&player_x, &player_y);
-    enemy_compute_aim_velocity(bullet_x, bullet_y, player_x, player_y, speed_q8, &vx_q8, &vy_q8);
+    lead_frames = enemy_get_aim_lead_frames(slot, speed_q8);
+    enemy_get_predicted_player_center(&target_x, &target_y, lead_frames);
+    enemy_compute_aim_velocity(bullet_x, bullet_y, target_x, target_y, speed_q8, &vx_q8, &vy_q8);
     return projectile_fire_enemy(bullet_x, bullet_y, vx_q8, vy_q8, ENEMY_PROJECTILE_FRAME);
 }
 
 static bool enemy_fire_aimed_y_offset(uint8_t slot, int16_t speed_q8, int16_t target_y_offset)
 {
+        int16_t lead_frames;
     int16_t bullet_x;
     int16_t bullet_y;
-    int16_t player_x;
-    int16_t player_y;
+    int16_t target_x;
+    int16_t target_y;
     int16_t vx_q8;
     int16_t vy_q8;
 
     enemy_get_bullet_origin(slot, &bullet_x, &bullet_y);
-    player_controller_get_center_position(&player_x, &player_y);
+    lead_frames = enemy_get_aim_lead_frames(slot, speed_q8);
+    enemy_get_predicted_player_center(&target_x, &target_y, lead_frames);
     enemy_compute_aim_velocity(
         bullet_x,
         bullet_y,
-        player_x,
-        (int16_t)(player_y + target_y_offset),
+        target_x,
+        (int16_t)(target_y + target_y_offset),
         speed_q8,
         &vx_q8,
         &vy_q8
@@ -620,7 +801,7 @@ static void update_pattern1(uint8_t slot)
         if (FROM_Q8(enemies[slot].y_q8) <= enemies[slot].target_y) {
             enemies[slot].y_q8 = TO_Q8(enemies[slot].target_y);
             enemies[slot].phase = TYPE1_PHASE_ATTACK;
-            enemies[slot].timer = 54;
+            enemies[slot].timer = 84;
         }
     } else if (enemies[slot].phase == TYPE1_PHASE_ATTACK) {
         if (enemies[slot].timer > 0) {
@@ -630,7 +811,7 @@ static void update_pattern1(uint8_t slot)
             enemies[slot].fire_timer--;
         }
         if (enemies[slot].shots_remaining > 0 && enemies[slot].fire_timer == 0) {
-            static const int16_t aim_pattern_y_offsets[TYPE1_SHOTS_PER_ENEMY] = {0, -12, 0, 12, 0, -6};
+            static const int16_t aim_pattern_y_offsets[TYPE1_SHOTS_PER_ENEMY] = {0, -8, 0, 8, 0, -4};
             uint8_t shot_index = (uint8_t)(TYPE1_SHOTS_PER_ENEMY - enemies[slot].shots_remaining);
             if (enemy_fire_aimed_y_offset(slot, BULLET_MEDIUM_SPEED_Q8, aim_pattern_y_offsets[shot_index])) {
                 enemies[slot].shots_remaining--;
@@ -686,7 +867,7 @@ static void update_pattern3(uint8_t slot)
             enemies[slot].fire_timer--;
         }
         if (enemies[slot].fire_timer == 0) {
-            if (enemy_fire_player_fan_step(slot, BULLET_MEDIUM_SPEED_Q8)) {
+            if (enemy_fire_player_fan_step(slot, BULLET_SLOW_SPEED_Q8)) {
                 enemies[slot].fire_timer = TYPE3_WAVE_FIRE_INTERVAL;
             } else {
                 enemies[slot].fire_timer = 2;
@@ -856,6 +1037,22 @@ void enemy_init(void)
     formation_anchor_x_q8 = 0;
     formation_anchor_y_q8 = 0;
     formation_vx_q8 = 0;
+    tracked_player_x = 0;
+    tracked_player_y = 0;
+    tracked_player_vx = 0;
+    tracked_player_vy = 0;
+    player_tracking_initialized = false;
+    game_over_mode = false;
+    game_over_animation_complete = false;
+
+    for (uint8_t i = 0; i < GAME_OVER_LETTER_COUNT; ++i) {
+        game_over_letters[i].active = false;
+        game_over_letters[i].x_q8 = TO_Q8(-32);
+        game_over_letters[i].y_q8 = TO_Q8(-32);
+        game_over_letters[i].target_x_q8 = TO_Q8(-32);
+        game_over_letters[i].target_y_q8 = TO_Q8(-32);
+        game_over_letters[i].frame = (uint8_t)(GAME_OVER_FIRST_FRAME + i);
+    }
 
     for (uint8_t i = 0; i < MAX_ENEMIES; i++) {
         enemy_reset_slot(i);
@@ -865,6 +1062,13 @@ void enemy_init(void)
 
 void enemy_update(void)
 {
+    if (game_over_mode) {
+        enemy_update_game_over_letters();
+        return;
+    }
+
+    enemy_update_player_tracking();
+
     if (wave_type == 5 && !wave_slots_clear()) {
         update_pattern5_anchor();
     }
@@ -931,4 +1135,96 @@ void enemy_update(void)
             }
             break;
     }
+}
+
+bool enemy_hit_test_player(int16_t x, int16_t y, int16_t width, int16_t height)
+{
+    int16_t player_right = (int16_t)(x + width);
+    int16_t player_bottom = (int16_t)(y + height);
+
+    if (game_over_mode) {
+        return false;
+    }
+
+    for (uint8_t i = 0; i < MAX_ENEMIES; ++i) {
+        int16_t enemy_left;
+        int16_t enemy_top;
+        int16_t enemy_right;
+        int16_t enemy_bottom;
+
+        if (!enemies[i].active) {
+            continue;
+        }
+
+        enemy_left = FROM_Q8(enemies[i].x_q8);
+        enemy_top = FROM_Q8(enemies[i].y_q8);
+        enemy_right = (int16_t)(enemy_left + ENEMY_SPRITE_SIZE_PX);
+        enemy_bottom = (int16_t)(enemy_top + ENEMY_SPRITE_SIZE_PX);
+
+        if (enemy_right <= x || enemy_left >= player_right ||
+            enemy_bottom <= y || enemy_top >= player_bottom) {
+            continue;
+        }
+
+        enemy_deactivate(i);
+        return true;
+    }
+
+    return false;
+}
+
+void enemy_start_game_over_animation(void)
+{
+    const int16_t target_start_x = (int16_t)((SCREEN_WIDTH - (GAME_OVER_LETTER_COUNT * ENEMY_SPRITE_SIZE_PX)) / 2);
+    const int16_t target_y = (int16_t)((SCREEN_HEIGHT / 2) - (ENEMY_SPRITE_SIZE_PX / 2));
+
+    game_over_mode = true;
+    game_over_animation_complete = false;
+
+    for (uint8_t i = 0; i < MAX_ENEMIES; ++i) {
+        enemy_deactivate(i);
+    }
+
+    for (uint8_t i = 0; i < GAME_OVER_LETTER_COUNT; ++i) {
+        int16_t start_x;
+        int16_t start_y;
+        int16_t target_x = (int16_t)(target_start_x + (i * ENEMY_SPRITE_SIZE_PX));
+
+        switch (i & 0x03u) {
+            case 0:
+                start_x = (int16_t)(-ENEMY_SPRITE_SIZE_PX - (i * 6));
+                start_y = (int16_t)(40 + (i * 18));
+                break;
+            case 1:
+                start_x = (int16_t)(SCREEN_WIDTH + ENEMY_SPRITE_SIZE_PX + (i * 6));
+                start_y = (int16_t)(30 + (i * 16));
+                break;
+            case 2:
+                start_x = (int16_t)(32 + (i * 28));
+                start_y = (int16_t)(-ENEMY_SPRITE_SIZE_PX - (i * 5));
+                break;
+            default:
+                start_x = (int16_t)(SCREEN_WIDTH - 40 - (i * 22));
+                start_y = (int16_t)(SCREEN_HEIGHT + ENEMY_SPRITE_SIZE_PX + (i * 5));
+                break;
+        }
+
+        enemy_setup_game_over_letter(i, start_x, start_y, target_x, target_y);
+    }
+}
+
+void enemy_stop_game_over_animation(void)
+{
+    game_over_mode = false;
+    game_over_animation_complete = false;
+
+    for (uint8_t i = 0; i < GAME_OVER_LETTER_COUNT; ++i) {
+        game_over_letters[i].active = false;
+        sprite_mode5_set_enemy(i, -32, -32, (uint8_t)(GAME_OVER_FIRST_FRAME + i));
+    }
+}
+
+bool enemy_is_game_over_animation_complete(void)
+{
+    return game_over_animation_complete;
 }

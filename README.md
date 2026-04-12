@@ -916,7 +916,7 @@ Here is the layout for the projectile sprite data and configuration in XRAM:
 #define PROJECTILE_SPRITE_SIZE_PX   8                 // Projectile sprite is 8x8 pixels
 #define PROJECTILE_FRAME_SIZE   0x0020U            // 32 bytes per 8x8 4bpp frame
 #define PROJECTILE_FRAME_COUNT  2                  // 2 frames for projectile
-#define MAX_PROJECTILES         32                  // Max number of projectiles on screen at once
+#define MAX_PROJECTILES         40                  // Max number of projectiles on screen at once
 
 #define SPRITE_DATA_END        (PROJECTILE_DATA + PROJECTILE_DATA_SIZE) // End of sprite data
 ```
@@ -1413,6 +1413,72 @@ That means:
 
 That keeps the architecture clean while the attack patterns are being designed and tuned.
 
+### 8. Player Collisions, Health, and Game Over
+
+The current build now includes full player damage handling and a game-over flow.
+
+#### Collision Sources
+
+Player damage now comes from both:
+- Enemy bullets (projectile slots reserved for enemies)
+- Enemy sprite contact
+
+Collision checks are AABB and use early-outs to keep frame cost bounded even when many sprites are active.
+
+#### Health Model
+
+Player health starts at `48` and is rendered on HUD row 2.
+
+Health bar mapping:
+- Tile range: `(17,2)` through `(22,2)`
+- 6 tiles total
+- 8 HP per tile
+- Tile index `39` is full and `47` is empty
+
+The game exposes tuning constants in `constants.h`:
+- `PLAYER_MAX_HEALTH`
+- `PLAYER_BULLET_DAMAGE`
+- `PLAYER_CONTACT_DAMAGE`
+- `PLAYER_HIT_COOLDOWN_FRAMES`
+- `PLAYER_HIT_FLASH_FRAMES`
+
+#### Health FX
+
+HUD palette index `10` is used for health feedback:
+- Normal: default HUD palette color
+- Damage flash: white blink for a short duration after hit
+- Low health: red override once health drops under threshold
+
+#### Player Destruction Sequence
+
+When health reaches zero, the player sprite runs a destruction sequence using frames:
+- `3`
+- `4`
+- `5`
+
+Movement and firing are disabled while destruction is active.
+
+#### Game Over State
+
+A dedicated game-over state is now part of the state machine.
+
+On game-over entry:
+1. Enemy/projectile gameplay interactions are halted
+2. Music switches to `music/RESOURCE.011.vgm`
+3. Background scroll transitions back toward title-style fast scrolling
+4. HUD tilemap is restored from ROM using:
+    - `open("ROM:StarFields_HUD_map.bin", O_RDONLY)`
+
+Game-over visuals:
+- Enemy frames `7..14` are reused to spell `GAME OVER`
+- Letters fly in from different off-screen origins and converge at center
+
+Exit rules from game-over:
+- Start press + release, or
+- 60-second timeout
+
+Both paths return to title and reset player, enemies, projectiles, score, HUD health, and title music.
+
 #### Enemy Tuning Parameters
 
 The quickest way to tune enemy behavior is in `src/enemy.c` and `src/enemy.h`.
@@ -1426,6 +1492,17 @@ Global wave pacing (`src/enemy.h`):
 Shared movement/bullet speed (`src/enemy.c`):
 - `ENEMY_SLOW_SPEED_Q8`, `ENEMY_MEDIUM_SPEED_Q8`, `ENEMY_FAST_SPEED_Q8`, `ENEMY_DIVE_SPEED_Q8`
 - `BULLET_SLOW_SPEED_Q8`, `BULLET_MEDIUM_SPEED_Q8`, `BULLET_FAST_SPEED_Q8`
+
+Shared predictive aiming (`src/enemy.c`):
+- `AIM_LEAD_MIN_FRAMES` / `AIM_LEAD_MAX_FRAMES`: clamp range for dynamic lead time.
+- `AIM_MAX_LEAD_PER_AXIS`: clamps per-frame tracked player velocity to avoid extreme lead jumps.
+- `enemy_update_player_tracking()`: updates player velocity estimate once per frame.
+- `enemy_get_aim_lead_frames()`: computes dynamic lead time using bullet speed and distance.
+- `enemy_get_predicted_player_center()`: returns the clamped projected target used by aimed fire helpers.
+
+Projectile pool sizing (`src/constants.h`):
+- `MAX_PROJECTILES`: total shared projectile sprites (player + enemy bullets).
+- `MAX_PLAYER_PROJECTILES`: reserved player slots; remaining slots are enemy bullets.
 
 Index 0 (zig then dive):
 - `ENEMY_ZIG_SPEED` (`src/enemy.h`): horizontal oscillation intensity.

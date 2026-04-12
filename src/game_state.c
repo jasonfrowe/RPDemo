@@ -44,5 +44,22 @@ game_transition_t game_state_handle_start_button(bool start_pressed)
         return GAME_TRANSITION_UNPAUSE_GAME;
     }
 
+    if (g_state == GAME_STATE_GAME_OVER) {
+        g_state = GAME_STATE_TITLE;
+        return GAME_TRANSITION_RETURN_TO_TITLE;
+    }
+
     return GAME_TRANSITION_NONE;
+}
+
+game_transition_t game_state_enter_game_over(void)
+{
+    if (g_state == GAME_STATE_GAME_OVER) {
+        return GAME_TRANSITION_NONE;
+    }
+
+    g_state = GAME_STATE_GAME_OVER;
+    // Require release before accepting Start as a return-to-title action.
+    g_start_armed = false;
+    return GAME_TRANSITION_ENTER_GAME_OVER;
 }

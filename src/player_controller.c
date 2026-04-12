@@ -21,10 +21,34 @@
 static int     player_speed  = PLAYER_DEFAULT_SPEED;
 static int32_t player_x_q8;
 static int32_t player_y_q8;
+static uint8_t player_health = PLAYER_MAX_HEALTH;
+static uint8_t hit_cooldown = 0;
+static uint8_t damage_flash_timer = 0;
+static bool player_destroyed = false;
+static uint8_t death_anim_frame = PLAYER_DEATH_FRAME_START;
+static uint8_t death_anim_tick = 0;
 
 static bool prev_speed_down = false;
 static bool prev_speed_up = false;
 static uint8_t fire_cooldown = 0;
+
+void player_controller_reset_for_new_run(void)
+{
+    player_speed = PLAYER_DEFAULT_SPEED;
+    player_x_q8 = ((int32_t)((SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX) / 2)) << Q8_SHIFT;
+    player_y_q8 = ((int32_t)((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) * 2 / 3)) << Q8_SHIFT;
+    player_health = PLAYER_MAX_HEALTH;
+    hit_cooldown = 0;
+    damage_flash_timer = 0;
+    player_destroyed = false;
+    death_anim_frame = PLAYER_DEATH_FRAME_START;
+    death_anim_tick = 0;
+    fire_cooldown = 0;
+    prev_speed_down = false;
+    prev_speed_up = false;
+    sprite_mode5_set_frame(0);
+    sprite_mode5_set_position((int16_t)(player_x_q8 >> Q8_SHIFT), (int16_t)(player_y_q8 >> Q8_SHIFT));
+}
 
 void player_controller_set_speed(int level)
 {
@@ -63,14 +87,79 @@ void player_controller_get_center_position(int16_t *x, int16_t *y)
 
 void player_controller_init(void)
 {
-    player_x_q8 = ((int32_t)((SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX) / 2)) << Q8_SHIFT;
-    player_y_q8 = ((int32_t)((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) * 2 / 3)) << Q8_SHIFT;
+    player_controller_reset_for_new_run();
+}
 
-    sprite_mode5_set_position((int16_t)(player_x_q8 >> Q8_SHIFT), (int16_t)(player_y_q8 >> Q8_SHIFT));
+void player_controller_apply_damage(uint8_t amount)
+{
+    if (!player_controller_can_take_damage()) {
+        return;
+    }
+
+    if (amount >= player_health) {
+        player_health = 0;
+    } else {
+        player_health = (uint8_t)(player_health - amount);
+    }
+
+    hit_cooldown = PLAYER_HIT_COOLDOWN_FRAMES;
+    damage_flash_timer = PLAYER_HIT_FLASH_FRAMES;
+
+    if (player_health == 0) {
+        player_destroyed = true;
+        fire_cooldown = 0;
+        death_anim_frame = PLAYER_DEATH_FRAME_START;
+        death_anim_tick = 0;
+        sprite_mode5_set_frame(death_anim_frame);
+    }
+}
+
+uint8_t player_controller_get_health(void)
+{
+    return player_health;
+}
+
+bool player_controller_is_destroyed(void)
+{
+    return player_destroyed;
+}
+
+bool player_controller_can_take_damage(void)
+{
+    return (!player_destroyed && hit_cooldown == 0);
+}
+
+bool player_controller_is_damage_flash_active(void)
+{
+    return (damage_flash_timer > 0);
+}
+
+bool player_controller_is_low_health(void)
+{
+    return (player_health > 0 && player_health <= PLAYER_LOW_HEALTH_THRESHOLD);
 }
 
 void player_controller_update(void)
 {
+    if (hit_cooldown > 0) {
+        hit_cooldown--;
+    }
+    if (damage_flash_timer > 0) {
+        damage_flash_timer--;
+    }
+
+    if (player_destroyed) {
+        death_anim_tick++;
+        if (death_anim_tick >= PLAYER_DEATH_FRAME_STEP_FRAMES) {
+            death_anim_tick = 0;
+            if (death_anim_frame < PLAYER_DEATH_FRAME_END) {
+                death_anim_frame++;
+                sprite_mode5_set_frame(death_anim_frame);
+            }
+        }
+        return;
+    }
+
     // Tap LT to decrease speed by 1, tap RT to increase speed by 1.
     bool speed_down_now = is_action_pressed(0, ACTION_BTN_LT);
     bool speed_up_now = is_action_pressed(0, ACTION_BTN_RT);
