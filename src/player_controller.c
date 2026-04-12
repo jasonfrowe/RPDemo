@@ -97,7 +97,9 @@ void player_controller_update(void)
 
     if (player_x_q8 < 0)         player_x_q8 = 0;
     if (player_x_q8 > max_x_q8) player_x_q8 = max_x_q8;
-    if (player_y_q8 < 0)         player_y_q8 = 0;
+    if (player_y_q8 < ((int32_t)HUD_TOP_PX << Q8_SHIFT)) {
+        player_y_q8 = ((int32_t)HUD_TOP_PX << Q8_SHIFT);
+    }
     if (player_y_q8 > max_y_q8) player_y_q8 = max_y_q8;
 
     sprite_mode5_set_position((int16_t)(player_x_q8 >> Q8_SHIFT), (int16_t)(player_y_q8 >> Q8_SHIFT));

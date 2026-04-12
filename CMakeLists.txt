@@ -16,6 +16,7 @@ rp6502_asset(RPDemo 0x10AE0 images/StarFields_FG_map.bin)
 rp6502_asset(RPDemo 0x11440 images/StarFields_HUD_map.bin)
 rp6502_asset(RPDemo 0x118F0 images/StarFields_tiles_4bpp.bin)
 rp6502_asset(RPDemo 0x138F0 images/Projectiles_4bpp.bin)
+rp6502_asset(RPDemo 0x13930 images/Enemies_4bpp.bin)
 rp6502_asset(RPDemo help src/help.txt)
 
 # ROM Assets
@@ -34,6 +35,7 @@ target_sources(RPDemo PRIVATE
     src/player_controller.c
     src/game_state.c
     src/projectile.c
+    src/enemy.c
     src/music.c
     src/opl.c
     src/vgm.c

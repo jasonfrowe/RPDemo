@@ -6,7 +6,8 @@
 
 // Store the player config address for updates
 unsigned PLAYER_CONFIG;
-unsigned PROJECTILE_CONFIG; // Address in XRAM where projectile sprite config is stored, for updates
+unsigned PROJECTILE_CONFIG;
+unsigned ENEMY_CONFIG;
 
 static uint8_t player_frame = 0;
 static uint8_t engine_phase = 0;
@@ -91,6 +92,43 @@ void sprite_mode5_init_projectiles(void) {
     puts("Mode5 projectile sprites ready");
 }
 
+void sprite_mode5_init_enemies(void) {
+    ENEMY_CONFIG = PROJECTILE_CONFIG + (MAX_PROJECTILES * sizeof(vga_mode5_sprite_t));
+
+    for (uint8_t i = 0; i < MAX_ENEMIES; i++) {
+        unsigned ptr = ENEMY_CONFIG + ((unsigned)i * sizeof(vga_mode5_sprite_t));
+        xram0_struct_set(ptr, vga_mode5_sprite_t, x_pos_px, -32);
+        xram0_struct_set(ptr, vga_mode5_sprite_t, y_pos_px, -32);
+        xram0_struct_set(ptr, vga_mode5_sprite_t, xram_sprite_ptr, ENEMY_DATA);
+        xram0_struct_set(ptr, vga_mode5_sprite_t, palette_ptr, ENEMY_PALETTE_ADDR);
+    }
+
+    // Mode 5 args: MODE, OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
+    // OPTIONS 0x0A = 16x16 sprites, 4bpp
+    if (xreg_vga_mode(5, 0x0A, ENEMY_CONFIG, MAX_ENEMIES, 0, 24, 0) < 0) {
+        puts("xreg_vga_mode failed");
+        return;
+    }
+
+    RIA.addr0 = ENEMY_PALETTE_ADDR;
+    RIA.step0 = 1;
+    for (int i = 0; i < 16; i++) {
+        RIA.rw0 = enemy_palette[i] & 0xFF;
+        RIA.rw0 = enemy_palette[i] >> 8;
+    }
+
+    puts("Mode5 enemy sprites ready");
+}
+
+void sprite_mode5_set_enemy(uint8_t slot, int16_t x, int16_t y, uint8_t type)
+{
+    unsigned ptr = ENEMY_CONFIG + ((unsigned)slot * sizeof(vga_mode5_sprite_t));
+    xram0_struct_set(ptr, vga_mode5_sprite_t, x_pos_px, x);
+    xram0_struct_set(ptr, vga_mode5_sprite_t, y_pos_px, y);
+    xram0_struct_set(ptr, vga_mode5_sprite_t, xram_sprite_ptr,
+        (ENEMY_DATA + ((unsigned)type * ENEMY_FRAME_SIZE)));
+}
+
 void sprite_mode5_set_projectile_position(uint8_t slot, int16_t x, int16_t y)
 {
     unsigned ptr = PROJECTILE_CONFIG + ((unsigned)slot * sizeof(vga_mode5_sprite_t));
@@ -110,8 +148,8 @@ void sprite_mode5_set_position(int16_t x, int16_t y)
         x = (int16_t)(SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX);
     }
     
-    // Clamp Y to valid screen range (0 to SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX)
-    if (y < 0) y = 0;
+    // Clamp Y to valid play area (HUD_TOP_PX to SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX)
+    if (y < HUD_TOP_PX) y = HUD_TOP_PX;
     if (y > (int16_t)(SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX)) {
         y = (int16_t)(SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX);
     }

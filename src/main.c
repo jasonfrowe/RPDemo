@@ -9,6 +9,7 @@
 #include "game_state.h"
 #include "music.h"
 #include "projectile.h"
+#include "enemy.h"
 
 static bool init_graphics(void)
 {
@@ -23,7 +24,9 @@ static bool init_graphics(void)
     sprite_mode5_init();
     tile_mode2_init();
     sprite_mode5_init_projectiles();
+    sprite_mode5_init_enemies();
     projectile_init();
+    enemy_init();
 
     return true;
 }
@@ -78,6 +81,7 @@ int main(void)
         if (game_state_get() == GAME_STATE_PLAYING) {
             player_controller_update();
             projectile_update();
+            enemy_update();
         }
     }
 

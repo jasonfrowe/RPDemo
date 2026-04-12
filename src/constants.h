@@ -43,7 +43,16 @@
 // Projectile movement
 #define PROJECTILE_SPEED_PX     4                   // Pixels per frame
 #define HUD_TOP_PX              24                  // Rows 0-23 are HUD; bullets expire when y < HUD_TOP_PX
-#define SPRITE_DATA_END        (PROJECTILE_DATA + PROJECTILE_DATA_SIZE) // End of sprite data
+
+#define ENEMY_DATA             (PROJECTILE_DATA + PROJECTILE_DATA_SIZE) // Address for enemy sprite data
+#define ENEMY_DATA_SIZE        0x0380U              // 896 bytes (7 frames 16x16 at 4bpp)
+#define ENEMY_SPRITE_SIZE_PX   16
+#define ENEMY_FRAME_SIZE       0x0080U              // 128 bytes per 16x16 4bpp frame
+#define ENEMY_TYPE_COUNT       7
+#define MAX_ENEMIES            32
+
+
+#define SPRITE_DATA_END        (ENEMY_DATA + ENEMY_DATA_SIZE) // End of sprite data
 
 
 // Palette configurations
@@ -57,6 +66,8 @@
 #define TILE_HUD_PALETTE_SIZE  0x0020
 #define PROJECTILE_PALETTE_ADDR 0xFC80 // 16-color palette for projectiles (32 bytes, 0xFC80-0xFC9F)
 #define PROJECTILE_PALETTE_SIZE 0x0020
+#define ENEMY_PALETTE_ADDR     0xFCA0  // 16-color palette for enemies (32 bytes, 0xFCA0-0xFCBF)
+#define ENEMY_PALETTE_SIZE     0x0020
 
 // OPL2 sound chip configuration
 #define OPL_XRAM_ADDR   0xFE00  // Native RIA OPL2 register page
@@ -72,5 +83,6 @@ extern unsigned PROJECTILE_CONFIG; // Address in XRAM where projectile sprite co
 extern unsigned TILE_BG_CONFIG; // Address in XRAM where tile background config is stored, for updates
 extern unsigned TILE_FG_CONFIG; // Address in XRAM where tile foreground config is stored, for updates
 extern unsigned TILE_HUD_CONFIG; // Address in XRAM where tile HUD config is stored, for updates
+extern unsigned ENEMY_CONFIG;    // Address in XRAM where enemy sprite configs start
 
 #endif // CONSTANTS_H

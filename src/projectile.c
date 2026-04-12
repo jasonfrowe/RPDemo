@@ -36,6 +36,40 @@ void projectile_fire_player(int16_t x, int16_t y)
     // All player slots full — no-op
 }
 
+bool projectile_hit_test_enemy(int16_t x, int16_t y, int16_t width, int16_t height)
+{
+    int16_t enemy_right = (int16_t)(x + width);
+    int16_t enemy_bottom = (int16_t)(y + height);
+
+    for (uint8_t i = 0; i < MAX_PLAYER_PROJECTILES; i++) {
+        int16_t bullet_left;
+        int16_t bullet_top;
+        int16_t bullet_right;
+        int16_t bullet_bottom;
+
+        if (!projectiles[i].active) continue;
+
+        bullet_left = projectiles[i].x;
+        bullet_top = projectiles[i].y;
+        bullet_right = (int16_t)(bullet_left + PROJECTILE_SPRITE_SIZE_PX);
+        bullet_bottom = (int16_t)(bullet_top + PROJECTILE_SPRITE_SIZE_PX);
+
+        if (bullet_right <= x || bullet_left >= enemy_right ||
+            bullet_bottom <= y || bullet_top >= enemy_bottom) {
+            continue;
+        }
+
+        // Hit: consume this projectile.
+        projectiles[i].active = false;
+        projectiles[i].x = -32;
+        projectiles[i].y = -32;
+        sprite_mode5_set_projectile_position(i, -32, -32);
+        return true;
+    }
+
+    return false;
+}
+
 void projectile_update(void)
 {
     for (uint8_t i = 0; i < MAX_PLAYER_PROJECTILES; i++) {
