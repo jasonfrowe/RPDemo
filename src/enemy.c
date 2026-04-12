@@ -45,7 +45,7 @@
 #define TYPE3_MIN_TARGET_Y (HUD_TOP_PX + 40)
 #define TYPE3_MAX_TARGET_Y 120
 #define TYPE3_ATTACK_DURATION_FRAMES 480
-#define TYPE3_FAN_FIRE_INTERVAL 3
+#define TYPE3_WAVE_FIRE_INTERVAL 8
 #define TYPE6_DETONATE_DIST_X 40
 #define TYPE6_DETONATE_DIST_Y 40
 
@@ -310,13 +310,15 @@ static void enemy_fire_big_barrage(uint8_t slot)
     }
 }
 
-static void enemy_fire_player_fan(uint8_t slot, int16_t speed_q8)
+static bool enemy_fire_player_fan_step(uint8_t slot, int16_t speed_q8)
 {
     static const int16_t y_offsets[] = {-72, -48, -24, 0, 24, 48, 72};
+    const uint8_t fan_count = (uint8_t)(sizeof(y_offsets) / sizeof(y_offsets[0]));
+    uint8_t step = (uint8_t)(enemies[slot].spiral_step % fan_count);
+    bool fired = enemy_fire_aimed_y_offset(slot, speed_q8, y_offsets[step]);
 
-    for (uint8_t i = 0; i < (uint8_t)(sizeof(y_offsets) / sizeof(y_offsets[0])); ++i) {
-        enemy_fire_aimed_y_offset(slot, speed_q8, y_offsets[i]);
-    }
+    enemies[slot].spiral_step = (uint8_t)((step + 1) % fan_count);
+    return fired;
 }
 
 static void enemy_sync_sprite(uint8_t slot)
@@ -535,7 +537,7 @@ static void spawn_enemy(uint8_t slot)
                 enemies[slot].target_y = target_ys[slot];
             }
             enemies[slot].timer = TYPE3_ATTACK_DURATION_FRAMES;
-            enemies[slot].fire_timer = (uint16_t)(4 + slot);
+            enemies[slot].fire_timer = (uint16_t)(6 + (slot * 2));
             enemies[slot].spiral_step = (uint8_t)(slot * 2);
             break;
 
@@ -684,8 +686,11 @@ static void update_pattern3(uint8_t slot)
             enemies[slot].fire_timer--;
         }
         if (enemies[slot].fire_timer == 0) {
-            enemy_fire_player_fan(slot, BULLET_MEDIUM_SPEED_Q8);
-            enemies[slot].fire_timer = TYPE3_FAN_FIRE_INTERVAL;
+            if (enemy_fire_player_fan_step(slot, BULLET_MEDIUM_SPEED_Q8)) {
+                enemies[slot].fire_timer = TYPE3_WAVE_FIRE_INTERVAL;
+            } else {
+                enemies[slot].fire_timer = 2;
+            }
         }
         if (enemies[slot].timer == 0) {
             enemies[slot].phase = TYPE3_PHASE_EXIT;

@@ -1449,8 +1449,8 @@ Index 2 (edge path):
 Index 3 (move to attack points, wide player-aimed fan):
 - Predetermined target arrays (`target_xs`, `target_ys`) in `spawn_enemy()` case `3` control where ships park.
 - `TYPE3_ATTACK_DURATION_FRAMES`: how long ships stay at attack points.
-- `TYPE3_FAN_FIRE_INTERVAL`: frames between fan volleys.
-- `enemy_fire_player_fan()`: fires a large-angle spread by aiming several bullets at vertical offsets around the player.
+- `TYPE3_WAVE_FIRE_INTERVAL`: frames between shots in the ongoing fan-wave cadence.
+- `enemy_fire_player_fan_step()`: emits one shot per cadence tick and sweeps through a large-angle offset list toward the player.
 
 Index 4 (descend then aimed dive):
 - Pre-dive countdown (`timer = 36 + slot*12`) in `spawn_enemy()` case `4` controls progression spacing.
