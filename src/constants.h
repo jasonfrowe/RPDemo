@@ -33,10 +33,10 @@
 #define STARFIELD_TILES_SIZE    0x2000U             // 8192 bytes (256 tiles at 32 bytes each for 4bpp)
 
 #define PROJECTILE_DATA        (STARFIELD_TILES_DATA + STARFIELD_TILES_SIZE) // Address for projectile sprite data
-#define PROJECTILE_DATA_SIZE    0x0100U            // 256 bytes (8 frames 8x8 at 4bpp)
+#define PROJECTILE_DATA_SIZE    0x0140U            // 320 bytes (10 frames 8x8 at 4bpp)
 #define PROJECTILE_SPRITE_SIZE_PX   8                 // Projectile sprite is 8x8 pixels
 #define PROJECTILE_FRAME_SIZE   0x0020U            // 32 bytes per 8x8 4bpp frame
-#define PROJECTILE_FRAME_COUNT  8                  // 8 frames for projectile/pickups/asteroids
+#define PROJECTILE_FRAME_COUNT  10                  // 10 frames for projectile/pickups/asteroids
 #define MAX_PROJECTILES         40                  // Max number of projectiles on screen at once
 #define MAX_PLAYER_PROJECTILES  8                   // Slots 0..(MAX_PLAYER_PROJECTILES-1) are reserved for the player
 
@@ -76,7 +76,7 @@
 #define GAME_OVER_SCROLL_START_DELAY_FRAMES 120
 
 #define ENEMY_DATA             (PROJECTILE_DATA + PROJECTILE_DATA_SIZE) // Address for enemy sprite data
-#define ENEMY_DATA_SIZE        0x1900U              // 6400 bytes (50 frames 16x16 at 4bpp)
+#define ENEMY_DATA_SIZE        0x2200U              // 8704 bytes (68 frames 16x16 at 4bpp)
 #define ENEMY_SPRITE_SIZE_PX   16
 #define ENEMY_FRAME_SIZE       0x0080U              // 128 bytes per 16x16 4bpp frame
 #define ENEMY_TYPE_COUNT       7
