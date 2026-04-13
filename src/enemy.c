@@ -989,12 +989,12 @@ static void enemy_prepare_wave(void)
     }
 }
 
-static uint16_t enemy_get_inter_spawn_frames_for_wave(void)
+static uint16_t enemy_get_inter_spawn_frames_for_type(uint8_t enemy_type)
 {
-    if (wave_type == 0) {
+    if (enemy_type == 0) {
         return TYPE0_INTER_SPAWN_FRAMES;
     }
-    if (wave_type == 5) {
+    if (enemy_type == 5) {
         return 0;
     }
     return ENEMY_INTER_SPAWN_FRAMES;
@@ -1600,7 +1600,9 @@ void enemy_update(void)
                         wave_clear_timeout_timer = WAVE_CLEAR_TIMEOUT_FRAMES;
                         wave_state = WAVE_STATE_CLEARING;
                     } else {
-                        wave_timer = spawned_any ? ENEMY_INTER_SPAWN_FRAMES : 1;
+                        wave_timer = spawned_any
+                            ? enemy_get_inter_spawn_frames_for_type(wave_spawn_types[wave_spawned])
+                            : 1;
                     }
                 } else {
                     if (free_slot < MAX_ENEMIES) {
@@ -1612,7 +1614,9 @@ void enemy_update(void)
                         wave_clear_timeout_timer = WAVE_CLEAR_TIMEOUT_FRAMES;
                         wave_state = WAVE_STATE_CLEARING;
                     } else {
-                        wave_timer = (free_slot < MAX_ENEMIES) ? enemy_get_inter_spawn_frames_for_wave() : 1;
+                        wave_timer = (free_slot < MAX_ENEMIES)
+                            ? enemy_get_inter_spawn_frames_for_type(wave_spawn_types[wave_spawned])
+                            : 1;
                     }
                 }
             }

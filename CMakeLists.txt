@@ -34,6 +34,10 @@ target_sources(RPDemo PRIVATE
     src/input.c
     src/player_controller.c
     src/game_state.c
+    src/gameplay.c
+    src/gameplay_playing.c
+    src/gameplay_bonus.c
+    src/gameplay_game_over.c
     src/projectile.c
     src/enemy.c
     src/score.c
