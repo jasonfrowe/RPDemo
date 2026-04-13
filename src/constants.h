@@ -33,7 +33,7 @@
 #define STARFIELD_TILES_SIZE    0x2000U             // 8192 bytes (256 tiles at 32 bytes each for 4bpp)
 
 #define PROJECTILE_DATA        (STARFIELD_TILES_DATA + STARFIELD_TILES_SIZE) // Address for projectile sprite data
-#define PROJECTILE_DATA_SIZE    0x0040U            // 64 bytes (2 frame 8x8 at 4bpp)
+#define PROJECTILE_DATA_SIZE    0x0100U            // 256 bytes (8 frames 8x8 at 4bpp)
 #define PROJECTILE_SPRITE_SIZE_PX   8                 // Projectile sprite is 8x8 pixels
 #define PROJECTILE_FRAME_SIZE   0x0020U            // 32 bytes per 8x8 4bpp frame
 #define PROJECTILE_FRAME_COUNT  2                  // 2 frames for projectile
@@ -49,10 +49,10 @@
 #define PLAYER_MAX_HEALTH           48
 #define PLAYER_LOW_HEALTH_THRESHOLD 12
 #define PLAYER_BULLET_DAMAGE         4
-#define PLAYER_CONTACT_DAMAGE        8
+#define PLAYER_CONTACT_DAMAGE        4
 #define PLAYER_HIT_COOLDOWN_FRAMES 108
-#define PLAYER_HIT_FLASH_FRAMES     48
-#define PLAYER_HITBOX_SIZE          14
+#define PLAYER_HIT_FLASH_FRAMES     96
+#define PLAYER_HITBOX_SIZE          13
 #define PLAYER_HITBOX_OFFSET        ((PLAYER_SPRITE_SIZE_PX - PLAYER_HITBOX_SIZE) / 2)
 
 // Player destruction animation uses frames 3, 4, 5
