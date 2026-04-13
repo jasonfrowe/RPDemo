@@ -1574,6 +1574,10 @@ Global wave pacing (`src/enemy.h`):
 - `ENEMY_INTER_SPAWN_FRAMES`: spacing between enemy spawns inside one wave.
 - `ENEMY_INTER_WAVE_FRAMES`: pause between completed waves.
 
+Wave overlap pacing (`src/enemy.c`):
+- `WAVE_CLEAR_TIMEOUT_FRAMES`: maximum wait after the last enemy of a wave is spawned before forcing the next wave to start. Current value is `240` frames (4 seconds at 60 FPS).
+- Next-wave trigger condition: start the next wave when either all enemies from the current wave are disabled, or the timeout expires.
+
 Shared movement/bullet speed (`src/enemy.c`):
 - `ENEMY_SLOW_SPEED_Q8`, `ENEMY_MEDIUM_SPEED_Q8`, `ENEMY_FAST_SPEED_Q8`, `ENEMY_DIVE_SPEED_Q8`
 - `BULLET_SLOW_SPEED_Q8`, `BULLET_MEDIUM_SPEED_Q8`, `BULLET_FAST_SPEED_Q8`
@@ -1637,6 +1641,64 @@ If you want balancing that feels predictable, tune in this order:
 2. Per-pattern attack hold timers (`timer`, `TYPE3_ATTACK_DURATION_FRAMES`).
 3. Bullet cadence values (`fire_timer` resets, `TYPE3_SPIRAL_FIRE_INTERVAL`).
 4. Bullet and movement speeds.
+
+## Gameplay Flow and Level Transitions
+
+### Player Autopilot System
+
+Smooth transitions between gameplay states are implemented using a player autopilot system that scripted movements.
+
+Autopilot states:
+- `PLAYER_SCRIPT_NONE` (0): Normal gameplay, player responds to input.
+- `PLAYER_SCRIPT_TO_BONUS` (1): Player moves smoothly from current position to bonus screen waypoint (240, 120).
+- `PLAYER_SCRIPT_FROM_BONUS` (2): After bonus completes, player returns to start position and resumes gameplay.
+
+Autopilot parameters:
+- Movement speed: `PLAYER_SCRIPT_STEP_PX` (2 px per frame on each axis).
+- Bonus screen waypoint: (240, 120) — right of center to keep sprite fully visible.
+- Start position: center-bottom of playfield (computed from screen dimensions).
+- Interpolation: linear step on both X and Y toward target; triggers next phase on arrival.
+
+**Level-end flow:**
+1. Player destroys final enemy in wave → `level_cleared` flag set.
+2. Input and enemy/projectile updates skip on next frame.
+3. `update_player_script()` moves player toward (240, 120) at 2 px/frame.
+4. On arrival, automatically enters bonus phase.
+5. Bonus phase plays tally animation, music plays intermission track.
+6. On bonus complete: `player_script` set to `PLAYER_SCRIPT_FROM_BONUS`.
+7. `update_player_script()` moves player back to start position.
+8. On arrival, `player_script = PLAYER_SCRIPT_NONE` and normal gameplay resumes.
+
+Benefit: Eliminates abrupt transitions and gives player visual feedback during downtime.
+
+### Game-Over State and Timing
+
+#### Duration
+
+Game-over screen lasts for `GAME_OVER_TIMEOUT_FRAMES` (6528 frames = 108.8 seconds at 60 FPS).
+
+This duration matches the length of the game-over music track (`music/RESOURCE.011.vgm`), ensuring the music completes without the screen cutting off abruptly.
+
+#### Animation Sequencing
+
+On game-over entry:
+1. Enemy and projectile gameplay halts.
+2. Music switches to game-over track.
+3. Background scroll transitions to title-style fast scrolling (within `GAME_OVER_SCROLL_START_DELAY_FRAMES = 120` frames = 2 seconds).
+4. Player sprite is hidden after the 2-second hold so the `GAME OVER` letters are the focus.
+5. Enemy sprite frames 7–14 are repurposed to spell out `GAME OVER`.
+6. Letters fly in from various off-screen positions and converge on screen with slower motion than the background.
+
+#### Exit Rules
+
+- **START pressed and released:** Returns to title cleanly (game state reset before transition).
+- **Timeout (108.8s):** Auto-returns to title.
+
+Both paths fully reset player, enemies, projectiles, score, HUD health, and restore title music.
+
+#### Player Autopilot Position Tuning
+
+The bonus screen waypoint is set to X=240 (instead of right edge) to ensure the player sprite stays fully visible during the bonus phase without clipping the right screen edge.
 
 
 

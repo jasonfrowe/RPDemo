@@ -106,6 +106,25 @@ static void tile_mode2_write_two_digits(uint8_t x, uint8_t y, uint16_t value)
     tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 1), y, (uint8_t)(SCORE_TILE_INDEX_BASE + ones));
 }
 
+    static void tile_mode2_write_three_digits(uint8_t x, uint8_t y, uint16_t value)
+    {
+        uint8_t hundreds;
+        uint8_t tens;
+        uint8_t ones;
+
+        if (value > 999) {
+            value = 999;
+        }
+
+        hundreds = (uint8_t)(value / 100u);
+        tens = (uint8_t)((value % 100u) / 10u);
+        ones = (uint8_t)(value % 10u);
+
+        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, (uint8_t)(SCORE_TILE_INDEX_BASE + hundreds));
+        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 1), y, (uint8_t)(SCORE_TILE_INDEX_BASE + tens));
+        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 2), y, (uint8_t)(SCORE_TILE_INDEX_BASE + ones));
+    }
+
 static void tile_mode2_write_four_digits(uint8_t x, uint8_t y, uint16_t value)
 {
     uint16_t divisor = 1000;
@@ -336,8 +355,8 @@ void tile_mode2_set_score(uint32_t score)
         score = 999999u;
     }
 
-    for (i = (SCORE_DIGITS - 1); i >= 0; --i) {
-        uint8_t digit = (uint8_t)(score % 10u);
+        for (i = (SCORE_DIGITS - 1); i >= 0; --i) {
+            uint8_t digit = (uint8_t)(score % 10u);
         score /= 10u;
         tile_mode2_write_tile(
             STARFIELD_HUD_DATA,
@@ -493,7 +512,7 @@ void tile_mode2_begin_level_bonus(uint8_t level, uint8_t multiplier)
         uint8_t row_y = tile_mode2_bonus_row_y(type);
         tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 3), row_y, 0);
         tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 5), row_y, 250);
-        tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 7), row_y, 0);
+        tile_mode2_write_three_digits((uint8_t)(BONUS_TABLE_X + 6), row_y, 0);
         tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 9), row_y, 251);
         tile_mode2_write_four_digits((uint8_t)(BONUS_TABLE_X + 11), row_y, 0);
     }
@@ -513,7 +532,7 @@ void tile_mode2_set_bonus_row(uint8_t enemy_type, uint16_t kills, uint16_t point
 
     tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 3), row_y, kills);
     tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 5), row_y, 250);
-    tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 7), row_y, points_each);
+    tile_mode2_write_three_digits((uint8_t)(BONUS_TABLE_X + 6), row_y, points_each);
     tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 9), row_y, 251);
     tile_mode2_write_four_digits((uint8_t)(BONUS_TABLE_X + 11), row_y, subtotal);
 }

@@ -99,6 +99,14 @@ void player_controller_set_position(int16_t x, int16_t y)
     sprite_mode5_set_position(x, y);
 }
 
+void player_controller_reset_damage_state(void)
+{
+    hit_cooldown = 0;
+    damage_flash_timer = 0;
+    damage_flash_phase = 0;
+    sprite_mode5_set_damage_flash(false);
+}
+
 void player_controller_get_center_position(int16_t *x, int16_t *y)
 {
     int16_t top_left_x = (int16_t)(player_x_q8 >> Q8_SHIFT);

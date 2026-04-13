@@ -68,13 +68,15 @@
 #define GAME_OVER_LETTER_START_DELAY_FRAMES 8
 #define GAME_OVER_VERTICAL_OFFSET_PX 24
 
-#define LEVEL_SUBWAVE_COUNT 7
+#define LEVEL_SUBWAVE_COUNT 13
+#define WAVE_CLEAR_TIMEOUT_FRAMES 240
 #define BONUS_ICON_FLY_IN_START_X (-20)
 #define BONUS_ICON_FLY_IN_SPEED_Q8 TO_Q8(4)
 
 typedef struct {
     bool    active;
     uint8_t type;
+    uint8_t wave_id;
     uint8_t phase;
     uint8_t slot_index;
     uint8_t path_variant;
@@ -105,6 +107,7 @@ static WaveState wave_state;
 static uint8_t wave_type;
 static uint8_t wave_spawned;
 static uint16_t wave_timer;
+static uint16_t wave_clear_timeout_timer;
 
 static uint16_t rng_state;
 static int16_t wave_origin_x;
@@ -116,6 +119,7 @@ static bool level_complete;
 static uint8_t wave_primary_type;
 static uint8_t wave_spawn_count;
 static uint8_t wave_spawn_types[MAX_ENEMIES];
+static uint8_t active_wave_id;
 static int32_t formation_anchor_x_q8;
 static int32_t formation_anchor_y_q8;
 static int16_t formation_vx_q8;
@@ -208,6 +212,7 @@ static void enemy_reset_slot(uint8_t slot)
 {
     enemies[slot].active = false;
     enemies[slot].type = 0;
+    enemies[slot].wave_id = 0;
     enemies[slot].phase = 0;
     enemies[slot].slot_index = slot;
     enemies[slot].path_variant = wave_variant;
@@ -656,6 +661,25 @@ static void enemy_enqueue_type(uint8_t type, uint8_t count)
     }
 }
 
+static uint8_t enemy_find_free_slot(void)
+{
+    for (uint8_t i = 0; i < MAX_ENEMIES; ++i) {
+        if (!enemies[i].active) {
+            return i;
+        }
+    }
+    return MAX_ENEMIES;
+}
+
+static uint8_t enemy_get_primary_type_for_subwave(uint8_t subwave)
+{
+    // 13-step mirrored order: 0,1,2,3,4,5,6,5,4,3,2,1,0
+    if (subwave <= 6) {
+        return subwave;
+    }
+    return (uint8_t)(12 - subwave);
+}
+
 static void enemy_build_subwave_composition(void)
 {
     static const uint8_t level2_extra[LEVEL_SUBWAVE_COUNT] = {1, 2, 3, 4, 5, 6, 4};
@@ -665,7 +689,7 @@ static void enemy_build_subwave_composition(void)
     static const uint8_t level5_extra_b[LEVEL_SUBWAVE_COUNT] = {3, 4, 5, 6, 0, 1, 2};
 
     wave_spawn_count = 0;
-    wave_primary_type = (uint8_t)(current_subwave % ENEMY_TYPE_COUNT);
+    wave_primary_type = enemy_get_primary_type_for_subwave(current_subwave);
     enemy_enqueue_type(wave_primary_type, ENEMY_WAVE_SIZE);
 
     if (current_level == 1) {
@@ -698,6 +722,10 @@ static void enemy_build_subwave_composition(void)
 static void enemy_prepare_wave(void)
 {
     enemy_build_subwave_composition();
+    active_wave_id = (uint8_t)(active_wave_id + 1u);
+    if (active_wave_id == 0) {
+        active_wave_id = 1;
+    }
     wave_variant = (uint8_t)(enemy_rand() & 1u);
     int16_t formation_width;
 
@@ -756,7 +784,7 @@ static uint16_t enemy_get_inter_spawn_frames_for_wave(void)
     return ENEMY_INTER_SPAWN_FRAMES;
 }
 
-static void spawn_enemy(uint8_t slot, uint8_t enemy_type)
+static void spawn_enemy(uint8_t slot, uint8_t enemy_type, uint8_t wave_slot)
 {
     int16_t start_x;
     int16_t start_y;
@@ -766,6 +794,8 @@ static void spawn_enemy(uint8_t slot, uint8_t enemy_type)
     enemy_reset_slot(slot);
     enemies[slot].active = true;
     enemies[slot].type = enemy_type;
+    enemies[slot].wave_id = active_wave_id;
+    enemies[slot].slot_index = wave_slot;
 
     switch (enemy_type) {
         case 0:
@@ -776,8 +806,8 @@ static void spawn_enemy(uint8_t slot, uint8_t enemy_type)
 
         case 1:
             enemies[slot].phase = TYPE1_PHASE_RISE;
-            lane = (uint8_t)(slot % ENEMY_WAVE_SIZE);
-            rank = (uint8_t)(slot / ENEMY_WAVE_SIZE);
+            lane = (uint8_t)(wave_slot % ENEMY_WAVE_SIZE);
+            rank = (uint8_t)(wave_slot / ENEMY_WAVE_SIZE);
 
             switch (lane) {
                 case 0:
@@ -817,34 +847,38 @@ static void spawn_enemy(uint8_t slot, uint8_t enemy_type)
             enemies[slot].x_q8 = TO_Q8(start_x);
             enemies[slot].y_q8 = TO_Q8(start_y);
             enemies[slot].waypoint_index = 1;
-            enemies[slot].fire_timer = (uint16_t)(20 + (slot * 8));
+            enemies[slot].fire_timer = (uint16_t)(20 + (wave_slot * 8));
             break;
 
-        case 3:
+        case 3:{
+            uint8_t lane = (uint8_t)(wave_slot % ENEMY_WAVE_SIZE);
+            uint8_t rank = (uint8_t)(wave_slot / ENEMY_WAVE_SIZE);
             enemies[slot].phase = TYPE3_PHASE_MOVE;
             enemies[slot].x_q8 = TO_Q8(enemy_rand_range(24, (int16_t)(SCREEN_WIDTH - ENEMY_SPRITE_SIZE_PX - 24)));
             enemies[slot].y_q8 = TO_Q8((int16_t)(-ENEMY_SPRITE_SIZE_PX));
             if (wave_variant == 0) {
                 static const int16_t target_xs[ENEMY_WAVE_SIZE] = {44, 104, 152, 208, 264};
                 static const int16_t target_ys[ENEMY_WAVE_SIZE] = {64, 84, 72, 88, 68};
-                enemies[slot].target_x = target_xs[slot];
-                enemies[slot].target_y = target_ys[slot];
+                enemies[slot].target_x = (int16_t)(target_xs[lane] + rank * 8);
+                enemies[slot].target_y = (int16_t)(target_ys[lane] + rank * 12);
             } else {
                 static const int16_t target_xs[ENEMY_WAVE_SIZE] = {60, 116, 168, 220, 276};
                 static const int16_t target_ys[ENEMY_WAVE_SIZE] = {88, 70, 92, 74, 86};
-                enemies[slot].target_x = target_xs[slot];
-                enemies[slot].target_y = target_ys[slot];
+                enemies[slot].target_x = (int16_t)(target_xs[lane] + rank * 8);
+                enemies[slot].target_y = (int16_t)(target_ys[lane] + rank * 12);
             }
             enemies[slot].timer = TYPE3_ATTACK_DURATION_FRAMES;
-            enemies[slot].fire_timer = (uint16_t)(6 + (slot * 2));
-            enemies[slot].spiral_step = (uint8_t)(slot * 2);
+            enemies[slot].fire_timer = (uint16_t)(6 + (wave_slot * 2));
+            enemies[slot].spiral_step = (uint8_t)(wave_slot * 2);
+            break;
+        }
             break;
 
         case 4:
             enemies[slot].phase = TYPE4_PHASE_DESCEND;
             enemies[slot].x_q8 = TO_Q8(enemy_rand_range(24, (int16_t)(SCREEN_WIDTH - ENEMY_SPRITE_SIZE_PX - 24)));
             enemies[slot].y_q8 = TO_Q8((int16_t)(-ENEMY_SPRITE_SIZE_PX));
-            enemies[slot].timer = (uint16_t)(36 + (slot * 12));
+            enemies[slot].timer = (uint16_t)(36 + (wave_slot * 12));
             break;
 
         case 5:
@@ -859,7 +893,7 @@ static void spawn_enemy(uint8_t slot, uint8_t enemy_type)
             enemies[slot].target_y = (int16_t)(TYPE5_FORMATION_Y + enemies[slot].home_y);
             enemies[slot].x_q8 = TO_Q8(enemies[slot].target_x);
             enemies[slot].y_q8 = TO_Q8((int16_t)(-ENEMY_SPRITE_SIZE_PX - (rank * 12)));
-            enemies[slot].fire_timer = (uint16_t)(30 + (slot * 10));
+            enemies[slot].fire_timer = (uint16_t)(30 + (wave_slot * 10));
             break;
 
         case 6:
@@ -878,8 +912,8 @@ static void spawn_enemy(uint8_t slot, uint8_t enemy_type)
 
 static bool wave_slots_clear(void)
 {
-    for (uint8_t i = 0; i < wave_spawn_count; i++) {
-        if (enemies[i].active) {
+    for (uint8_t i = 0; i < MAX_ENEMIES; ++i) {
+        if (enemies[i].active && enemies[i].wave_id == active_wave_id) {
             return false;
         }
     }
@@ -1176,9 +1210,11 @@ void enemy_init(void)
     wave_state = WAVE_STATE_DELAY;
     wave_type = 0;
     wave_primary_type = 0;
+    active_wave_id = 0;
     wave_spawned = 0;
     wave_spawn_count = ENEMY_WAVE_SIZE;
     wave_timer = ENEMY_SPAWN_DELAY_FRAMES;
+    wave_clear_timeout_timer = 0;
     wave_origin_x = (SCREEN_WIDTH / 2);
     wave_variant = 0;
     wave_type0_shots_remaining = 0;
@@ -1239,7 +1275,9 @@ void enemy_start_level(uint8_t level_index)
     wave_state = WAVE_STATE_DELAY;
     wave_spawned = 0;
     wave_spawn_count = 0;
+    active_wave_id = 0;
     wave_timer = ENEMY_SPAWN_DELAY_FRAMES;
+    wave_clear_timeout_timer = 0;
     type5_spawn_count = 0;
     type5_spawned_count = 0;
     formation_started = false;
@@ -1331,36 +1369,54 @@ void enemy_update(void)
             if (wave_timer > 0) {
                 wave_timer--;
             } else {
+                uint8_t free_slot = enemy_find_free_slot();
+
                 if (wave_type == 5) {
                     while (wave_spawned < wave_spawn_count) {
-                        spawn_enemy(wave_spawned, wave_spawn_types[wave_spawned]);
+                        free_slot = enemy_find_free_slot();
+                        if (free_slot >= MAX_ENEMIES) {
+                            break;
+                        }
+                        spawn_enemy(free_slot, wave_spawn_types[wave_spawned], wave_spawned);
                         wave_spawned++;
                     }
-                    wave_state = WAVE_STATE_CLEARING;
-                } else {
-                    spawn_enemy(wave_spawned, wave_spawn_types[wave_spawned]);
-                    wave_spawned++;
-
                     if (wave_spawned >= wave_spawn_count) {
+                        wave_clear_timeout_timer = WAVE_CLEAR_TIMEOUT_FRAMES;
                         wave_state = WAVE_STATE_CLEARING;
                     } else {
-                        wave_timer = enemy_get_inter_spawn_frames_for_wave();
+                        wave_timer = 1;
+                    }
+                } else {
+                    if (free_slot < MAX_ENEMIES) {
+                        spawn_enemy(free_slot, wave_spawn_types[wave_spawned], wave_spawned);
+                        wave_spawned++;
+                    }
+
+                    if (wave_spawned >= wave_spawn_count) {
+                        wave_clear_timeout_timer = WAVE_CLEAR_TIMEOUT_FRAMES;
+                        wave_state = WAVE_STATE_CLEARING;
+                    } else {
+                        wave_timer = (free_slot < MAX_ENEMIES) ? enemy_get_inter_spawn_frames_for_wave() : 1;
                     }
                 }
             }
             break;
 
         case WAVE_STATE_CLEARING:
-            if (wave_slots_clear()) {
+            if (wave_clear_timeout_timer > 0) {
+                wave_clear_timeout_timer--;
+            }
+
+            if (wave_slots_clear() || wave_clear_timeout_timer == 0) {
                 current_subwave++;
 
                 if (current_subwave >= LEVEL_SUBWAVE_COUNT) {
                     level_complete = true;
                     wave_state = WAVE_STATE_DELAY;
-                    wave_timer = ENEMY_INTER_WAVE_FRAMES;
+                    wave_timer = 0;
                 } else {
                     wave_spawned = 0;
-                    wave_timer = ENEMY_INTER_WAVE_FRAMES;
+                    wave_timer = 0;
                     wave_state = WAVE_STATE_DELAY;
                 }
             }

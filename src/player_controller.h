@@ -9,6 +9,7 @@ void player_controller_reset_for_new_run(void);
 void player_controller_update(void);
 void player_controller_get_position(int16_t *x, int16_t *y);
 void player_controller_set_position(int16_t x, int16_t y);
+void player_controller_reset_damage_state(void);
 void player_controller_get_center_position(int16_t *x, int16_t *y);
 void player_controller_apply_damage(uint8_t amount);
 void player_controller_heal(uint8_t amount);

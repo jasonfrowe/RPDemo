@@ -75,8 +75,8 @@ static bool level_bonus_complete = false;
 static player_script_t player_script = PLAYER_SCRIPT_NONE;
 
 #define BONUS_COUNT_STEP_FRAMES 6
-#define PLAYER_SCRIPT_STEP_PX 2
-#define PLAYER_BONUS_TARGET_X 280
+#define PLAYER_SCRIPT_STEP_PX 1
+#define PLAYER_BONUS_TARGET_X 240
 #define PLAYER_BONUS_TARGET_Y 120
 #define PLAYER_START_X ((SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX) / 2)
 #define PLAYER_START_Y (((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) * 2) / 3)
@@ -133,6 +133,10 @@ static void update_player_script(void)
     if (player_script == PLAYER_SCRIPT_NONE) {
         return;
     }
+
+        // During autopilot: show rest frame and continue engine animation
+        sprite_mode5_set_frame(0);
+        sprite_mode5_update_engine(false);
 
     player_controller_get_position(&x, &y);
 
@@ -212,7 +216,7 @@ static void begin_level_bonus_sequence(void)
     projectile_init();
     enemy_clear_all();
     enemy_prepare_bonus_icons();
-    sprite_mode5_hide_player();
+    sprite_mode5_show_player();
 
     tile_mode2_start_level_bonus_transition();
     music_set_track("music/RESOURCE.006.vgm");
@@ -364,6 +368,8 @@ static void reset_to_title_scene(void)
 static void start_new_run(void)
 {
     current_level = 1;
+    enemy_stop_game_over_animation();
+    enemy_hide_bonus_icons();
     projectile_init();
     enemy_start_level(current_level);
     score_init();
@@ -519,11 +525,14 @@ int main(void)
             }
 
             if (!player_controller_is_destroyed() && enemy_is_level_complete() && player_script == PLAYER_SCRIPT_NONE) {
+                player_controller_reset_damage_state();
                 projectile_init();
                 enemy_clear_all();
                 player_script = PLAYER_SCRIPT_TO_BONUS;
             }
         } else if (game_state_get() == GAME_STATE_LEVEL_BONUS) {
+            sprite_mode5_set_frame(0);
+            sprite_mode5_update_engine(false);
             update_level_bonus_sequence();
         } else if (game_state_get() == GAME_STATE_GAME_OVER) {
             player_controller_update();
