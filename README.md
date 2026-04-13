@@ -1164,6 +1164,8 @@ Wave states:
 
 Enemies spawn one-by-one in a wave, follow a shared zig-zag path, and are disabled once they leave the bottom of the screen.
 
+Wave spawning uses the full 32-enemy sprite pool rather than reusing only the first few hardware slots. When the next wave starts, new enemies are placed into the first free pool slots, so surviving enemies from previous waves remain active on screen.
+
 Spawn starts off-screen so enemies enter cleanly (sprite coordinates are top-left):
 
 ```c
@@ -1177,10 +1179,22 @@ enemies[i].y += ENEMY_SPEED_Y;
 enemies[i].x = enemy_path_x_for_y(enemies[i].y);
 ```
 
-When a wave clears, the next wave uses the next type index:
+Primary wave order uses a mirrored 13-step sequence:
 
 ```c
-wave_type = (uint8_t)((wave_type + 1) % ENEMY_TYPE_COUNT);
+0, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1, 0
+```
+
+The next wave begins when either:
+- all enemies spawned by the current wave are disabled, or
+- `WAVE_CLEAR_TIMEOUT_FRAMES` expires after the last enemy in that wave is spawned.
+
+Surviving enemies from older waves are not despawned when this happens; they continue to move and shoot while the new wave spawns into other free pool slots.
+
+When a wave advances, the primary type is chosen from that mirrored sequence rather than simple modulo indexing:
+
+```c
+wave_primary_type = enemy_get_primary_type_for_subwave(current_subwave);
 ```
 
 ### 4. Bullet vs Enemy Collision
@@ -1614,6 +1628,7 @@ Index 2 (edge path):
 
 Index 3 (move to attack points, wide player-aimed fan):
 - Predetermined target arrays (`target_xs`, `target_ys`) in `spawn_enemy()` case `3` control where ships park.
+- When multiple index-3 waves overlap, newer groups are offset so parked ships do not stack directly on top of older groups.
 - `TYPE3_ATTACK_DURATION_FRAMES`: how long ships stay at attack points.
 - `TYPE3_WAVE_FIRE_INTERVAL`: frames between shots in the ongoing fan-wave cadence.
 - `enemy_fire_player_fan_step()`: emits one shot per cadence tick and sweeps through a large-angle offset list toward the player.
@@ -1626,6 +1641,8 @@ Index 4 (descend then aimed dive):
 Index 5 (formation sweep + step-down):
 - `TYPE5_FORMATION_SPACING_X`: horizontal spacing between ships.
 - `TYPE5_FORMATION_Y`: starting Y of the formation.
+- Each overlapping index-5 wave has its own independent formation anchor/state, so multiple formations can coexist on screen without reusing the same movement controller.
+- A type-5 wave group remains active until all of its members have spawned and all of those members are gone, which prevents newly prepared formations from becoming inert before their ships finish entering the screen.
 - `TYPE5_STEP_DOWN_Q8`: total Y increment applied per wall bounce.
 - `TYPE5_STEP_DOWN_SPEED_Q8`: smoothness/speed of the downward transition.
 - Side bounds (`8` and `SCREEN_WIDTH - 8`) in `update_pattern5_anchor()`.
