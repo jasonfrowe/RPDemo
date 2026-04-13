@@ -1098,7 +1098,7 @@ Then define enemy layout in constants.h:
 
 ```c
 #define ENEMY_DATA             (PROJECTILE_DATA + PROJECTILE_DATA_SIZE)
-#define ENEMY_DATA_SIZE        0x0380U              // 7 frames * 128 bytes
+#define ENEMY_DATA_SIZE        0x1900U              // 50 frames * 128 bytes
 #define ENEMY_SPRITE_SIZE_PX   16
 #define ENEMY_FRAME_SIZE       0x0080U
 #define ENEMY_TYPE_COUNT       7
@@ -1111,6 +1111,14 @@ extern unsigned ENEMY_CONFIG;
 ```
 
 `ENEMY_DATA_SIZE` is 896 bytes because each 16x16 frame at 4bpp is 128 bytes and we have 7 types.
+
+Enemy frame layout (per type):
+- Base frames for types `0..6`: `0, 6, 12, 18, 24, 30, 36`
+- Active animation for each type: base `+0, +1, +2`
+- Destruction animation for each type: base `+3, +4, +5`
+
+Game-over letter frames:
+- `42..49` spell `GAME OVER`
 
 ### 2. Enemy Sprite Pool (Mode 5)
 
@@ -1201,6 +1209,11 @@ wave_primary_type = enemy_get_primary_type_for_subwave(current_subwave);
 
 Collision is implemented as AABB overlap between an enemy box and active player bullets.
 
+When a bullet hit is confirmed, enemies now enter a dedicated dying state instead of being removed instantly:
+- Dying enemies play the 3-frame destruction sequence (`+3,+4,+5`) at a cadence similar to player destruction.
+- While dying, enemies do not move, do not fire, and do not collide with player bullets or the player.
+- After the final death frame, the enemy is removed from the screen and deactivated.
+
 In projectile.c:
 
 ```c
@@ -1223,7 +1236,7 @@ if (enemies[i].y >= HUD_TOP_PX &&
 }
 ```
 
-This gives immediate hit feedback with simple despawn behavior.
+This gives immediate hit feedback with visible destruction animation and clean deactivation.
 
 ### 5. Main Loop Integration
 
@@ -1453,7 +1466,7 @@ The game exposes tuning constants in `constants.h`:
 - `PLAYER_MAX_HEALTH`
 - `PLAYER_BULLET_DAMAGE`
 - `PLAYER_CONTACT_DAMAGE`
-- `PLAYER_HIT_COOLDOWN_FRAMES`
+- `PLAYER_HIT_COOLDOWN_FRAMES` (currently `108` frames)
 - `PLAYER_HIT_FLASH_FRAMES`
 
 #### Health FX
@@ -1486,8 +1499,8 @@ Audio timing during destruction/game-over:
 - After `GAME OVER` sprites fully assemble, there is a 2-second hold before fast title-style scroll transition starts
 
 Player collision box tuning:
-- Collision checks now use a centered `14x14` hitbox inside the `16x16` sprite (`+1,+1` offset)
-- Post-hit invulnerability window was increased to better match on-screen flash timing
+- Collision checks now use a centered `14x14` hitbox inside the `16x16` sprite (`(PLAYER_SPRITE_SIZE_PX - PLAYER_HITBOX_SIZE) / 2` offset)
+- Post-hit invulnerability window is `108` frames (twice the previous `54`-frame value)
 
 Title screen player effect:
 - The player sprite engine glow palette animation now runs on the title screen as an ambient effect
@@ -1538,6 +1551,9 @@ Score scaling by level:
 - Level 3: base x3 (`30, 45, 60, ...`)
 - Level 4+: base x(level)
 
+Scoring note:
+- Enemy index `6` is worth `100` points per kill before level multiplier scaling in bonus tally.
+
 Health restoration:
 - 1 HP restored per enemy kill from the previous level (clamped to max).
 
@@ -1564,7 +1580,7 @@ On game-over entry:
     - `open("ROM:StarFields_HUD_map.bin", O_RDONLY)`
 
 Game-over visuals:
-- Enemy frames `7..14` are reused to spell `GAME OVER`
+- Enemy frames `42..49` are reused to spell `GAME OVER`
 - Letters fly in from different off-screen origins and converge more slowly
 - Final word placement is shifted downward to avoid overlapping `PRESS START`
 - Only a brief delay is applied before the letter fly-in begins

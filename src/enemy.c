@@ -63,10 +63,15 @@
 #define TYPE5_PHASE_FORMED       1
 
 #define GAME_OVER_LETTER_COUNT 8
-#define GAME_OVER_FIRST_FRAME 7
+#define GAME_OVER_FIRST_FRAME 42
 #define GAME_OVER_LETTER_SPEED_Q8 ENEMY_SLOW_SPEED_Q8
 #define GAME_OVER_LETTER_START_DELAY_FRAMES 8
 #define GAME_OVER_VERTICAL_OFFSET_PX 24
+
+#define ENEMY_FRAMES_PER_TYPE 6
+#define ENEMY_ACTIVE_FRAMES 3
+#define ENEMY_DEATH_FRAME_START 3
+#define ENEMY_ACTIVE_ANIM_STEP_FRAMES 8
 
 #define LEVEL_SUBWAVE_COUNT 13
 #define WAVE_CLEAR_TIMEOUT_FRAMES 240
@@ -75,8 +80,13 @@
 
 typedef struct {
     bool    active;
+    bool    dying;
     uint8_t type;
     uint8_t wave_id;
+    uint8_t anim_frame;
+    uint8_t anim_tick;
+    uint8_t death_frame;
+    uint8_t death_tick;
     uint8_t phase;
     uint8_t slot_index;
     uint8_t path_variant;
@@ -177,6 +187,8 @@ static WaveGroup *enemy_wave_group_get(uint8_t wave_id)
     return &wave_groups[(uint8_t)(wave_id % MAX_ENEMIES)];
 }
 
+static void enemy_deactivate(uint8_t slot);
+
 static const int8_t radial_dirs[8][2] = {
     { 8,  0},
     { 6,  6},
@@ -224,17 +236,82 @@ static int16_t enemy_abs16(int16_t value)
     return (value < 0) ? (int16_t)(-value) : value;
 }
 
+static uint8_t enemy_base_frame_for_type(uint8_t enemy_type)
+{
+    return (uint8_t)(enemy_type * ENEMY_FRAMES_PER_TYPE);
+}
+
+static void enemy_update_active_animation(uint8_t slot)
+{
+    uint8_t base_frame;
+    uint8_t frame_offset;
+
+    if (enemies[slot].dying) {
+        return;
+    }
+
+    enemies[slot].anim_tick++;
+    if (enemies[slot].anim_tick < ENEMY_ACTIVE_ANIM_STEP_FRAMES) {
+        return;
+    }
+
+    enemies[slot].anim_tick = 0;
+    base_frame = enemy_base_frame_for_type(enemies[slot].type);
+    frame_offset = (uint8_t)(enemies[slot].anim_frame - base_frame);
+    frame_offset = (uint8_t)((frame_offset + 1) % ENEMY_ACTIVE_FRAMES);
+    enemies[slot].anim_frame = (uint8_t)(base_frame + frame_offset);
+}
+
+static void enemy_begin_death(uint8_t slot)
+{
+    uint8_t base_frame = enemy_base_frame_for_type(enemies[slot].type);
+
+    enemies[slot].dying = true;
+    enemies[slot].death_frame = ENEMY_DEATH_FRAME_START;
+    enemies[slot].death_tick = 0;
+    enemies[slot].anim_frame = (uint8_t)(base_frame + ENEMY_DEATH_FRAME_START);
+}
+
+static void enemy_update_death(uint8_t slot)
+{
+    uint8_t base_frame;
+
+    if (!enemies[slot].dying) {
+        return;
+    }
+
+    enemies[slot].death_tick++;
+    if (enemies[slot].death_tick < PLAYER_DEATH_FRAME_STEP_FRAMES) {
+        return;
+    }
+
+    enemies[slot].death_tick = 0;
+    if (enemies[slot].death_frame < 5u) {
+        enemies[slot].death_frame++;
+        base_frame = enemy_base_frame_for_type(enemies[slot].type);
+        enemies[slot].anim_frame = (uint8_t)(base_frame + enemies[slot].death_frame);
+    } else {
+        enemy_deactivate(slot);
+    }
+}
+
 static void enemy_deactivate(uint8_t slot)
 {
     enemies[slot].active = false;
-    sprite_mode5_set_enemy(slot, -32, -32, enemies[slot].type);
+    enemies[slot].dying = false;
+    sprite_mode5_set_enemy(slot, -32, -32, enemies[slot].anim_frame);
 }
 
 static void enemy_reset_slot(uint8_t slot)
 {
     enemies[slot].active = false;
+    enemies[slot].dying = false;
     enemies[slot].type = 0;
     enemies[slot].wave_id = 0;
+    enemies[slot].anim_frame = 0;
+    enemies[slot].anim_tick = 0;
+    enemies[slot].death_frame = ENEMY_DEATH_FRAME_START;
+    enemies[slot].death_tick = 0;
     enemies[slot].phase = 0;
     enemies[slot].slot_index = slot;
     enemies[slot].path_variant = wave_variant;
@@ -570,7 +647,7 @@ static void enemy_sync_sprite(uint8_t slot)
         slot,
         FROM_Q8(enemies[slot].x_q8),
         FROM_Q8(enemies[slot].y_q8),
-        enemies[slot].type
+        enemies[slot].anim_frame
     );
 }
 
@@ -583,9 +660,13 @@ static bool enemy_try_hit(uint8_t slot)
         return false;
     }
 
+    if (enemies[slot].dying) {
+        return false;
+    }
+
     if (projectile_hit_test_enemy(x, y, ENEMY_SPRITE_SIZE_PX, ENEMY_SPRITE_SIZE_PX)) {
         score_add_enemy_kill(enemies[slot].type);
-        enemy_deactivate(slot);
+        enemy_begin_death(slot);
         return true;
     }
 
@@ -928,9 +1009,14 @@ static void spawn_enemy(uint8_t slot, uint8_t enemy_type, uint8_t wave_slot)
 
     enemy_reset_slot(slot);
     enemies[slot].active = true;
+    enemies[slot].dying = false;
     enemies[slot].type = enemy_type;
     enemies[slot].wave_id = active_wave_id;
     enemies[slot].slot_index = wave_slot;
+    enemies[slot].anim_frame = enemy_base_frame_for_type(enemy_type);
+    enemies[slot].anim_tick = 0;
+    enemies[slot].death_frame = ENEMY_DEATH_FRAME_START;
+    enemies[slot].death_tick = 0;
 
     switch (enemy_type) {
         case 0:
@@ -1275,6 +1361,11 @@ static void update_pattern6(uint8_t slot)
 
 static void update_enemy_pattern(uint8_t slot)
 {
+    if (enemies[slot].dying) {
+        enemy_update_death(slot);
+        return;
+    }
+
     switch (enemies[slot].type) {
         case 0:
             update_pattern0(slot);
@@ -1438,6 +1529,13 @@ void enemy_update(void)
             continue;
         }
 
+        if (enemies[i].dying) {
+            enemy_sync_sprite(i);
+            continue;
+        }
+
+        enemy_update_active_animation(i);
+
         if (enemy_try_hit(i)) {
             continue;
         }
@@ -1556,7 +1654,11 @@ bool enemy_hit_test_player(int16_t x, int16_t y, int16_t width, int16_t height)
             continue;
         }
 
-        enemy_deactivate(i);
+        if (enemies[i].dying) {
+            continue;
+        }
+
+        enemy_begin_death(i);
         return true;
     }
 
@@ -1566,7 +1668,7 @@ bool enemy_hit_test_player(int16_t x, int16_t y, int16_t width, int16_t height)
 void enemy_show_bonus_icons(void)
 {
     for (uint8_t i = 0; i < ENEMY_TYPE_COUNT; ++i) {
-        sprite_mode5_set_enemy(i, tile_mode2_get_bonus_icon_target_x(), tile_mode2_get_bonus_icon_target_y(i), i);
+        sprite_mode5_set_enemy(i, tile_mode2_get_bonus_icon_target_x(), tile_mode2_get_bonus_icon_target_y(i), enemy_base_frame_for_type(i));
     }
 }
 
@@ -1607,7 +1709,7 @@ void enemy_start_bonus_icon_fly_in(uint8_t enemy_type)
     bonus_icon_anim_target_x_q8 = TO_Q8(target_x);
     bonus_icon_anim_target_y_q8 = TO_Q8(target_y);
 
-    sprite_mode5_set_enemy(enemy_type, BONUS_ICON_FLY_IN_START_X, target_y, enemy_type);
+    sprite_mode5_set_enemy(enemy_type, BONUS_ICON_FLY_IN_START_X, target_y, enemy_base_frame_for_type(enemy_type));
 }
 
 bool enemy_update_bonus_icon_fly_in(void)
@@ -1632,7 +1734,7 @@ bool enemy_update_bonus_icon_fly_in(void)
 
     draw_x = FROM_Q8(bonus_icon_anim_x_q8);
     draw_y = FROM_Q8(bonus_icon_anim_y_q8);
-    sprite_mode5_set_enemy(bonus_icon_anim_type, draw_x, draw_y, bonus_icon_anim_type);
+    sprite_mode5_set_enemy(bonus_icon_anim_type, draw_x, draw_y, enemy_base_frame_for_type(bonus_icon_anim_type));
 
     return bonus_icon_anim_complete;
 }
@@ -1640,7 +1742,7 @@ bool enemy_update_bonus_icon_fly_in(void)
 void enemy_hide_bonus_icons(void)
 {
     for (uint8_t i = 0; i < ENEMY_TYPE_COUNT; ++i) {
-        sprite_mode5_set_enemy(i, -32, -32, i);
+        sprite_mode5_set_enemy(i, -32, -32, enemy_base_frame_for_type(i));
     }
 }
 

@@ -10,6 +10,10 @@ static uint16_t g_level_kills[ENEMY_TYPE_COUNT];
 
 uint8_t score_points_for_enemy(uint8_t enemy_type)
 {
+    if (enemy_type == 6u) {
+        return 100u;
+    }
+
     uint8_t points = (uint8_t)(10u + (enemy_type * 5u));
     if (points > 40u) {
         points = 40u;
