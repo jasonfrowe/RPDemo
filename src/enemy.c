@@ -1508,6 +1508,17 @@ bool enemy_is_level_complete(void)
     return level_complete;
 }
 
+bool enemy_has_active(void)
+{
+    for (uint8_t i = 0; i < MAX_ENEMIES; ++i) {
+        if (enemies[i].active) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void enemy_update(void)
 {
     if (game_over_mode) {

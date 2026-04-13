@@ -47,6 +47,16 @@ static uint8_t health_flash_tick = 0;
 #define PAUSED_TEXT "PAUSED"
 #define PAUSED_TEXT_X 17
 #define PAUSED_TEXT_Y 14
+#define HUD_TEXT_YELLOW 0x57FF
+#define LEVEL_TEXT_X 16
+#define LEVEL_TEXT_Y 14
+#define LEVEL_TEXT_LEN 8
+#define LEVEL_COMPLETE_TEXT_X 13
+#define LEVEL_COMPLETE_TEXT_Y 14
+#define LEVEL_COMPLETE_TEXT_LEN 14
+#define BONUS_CONTINUE_TEXT_X 14
+#define BONUS_CONTINUE_TEXT_Y 23
+#define BONUS_CONTINUE_TEXT_LEN 11
 #define HEALTH_FLASH_TOGGLE_FRAMES 3
 #define BONUS_TABLE_X 10
 #define BONUS_TABLE_Y 5
@@ -95,6 +105,19 @@ static void tile_mode2_write_tile(unsigned tilemap_addr, uint8_t width, uint8_t 
     RIA.addr0 = tilemap_addr + ((unsigned)y * width) + x;
     RIA.step0 = 1;
     RIA.rw0 = tile_index;
+}
+
+static void tile_mode2_clear_hud_text(uint8_t x, uint8_t y, uint8_t len)
+{
+    for (uint8_t i = 0; i < len; ++i) {
+        tile_mode2_write_tile(
+            STARFIELD_HUD_DATA,
+            STARFIELD_HUD_WIDTH,
+            (uint8_t)(x + i),
+            y,
+            0
+        );
+    }
 }
 
 static void tile_mode2_write_two_digits(uint8_t x, uint8_t y, uint16_t value)
@@ -413,6 +436,7 @@ void tile_mode2_set_paused_banner(bool visible)
     static const uint8_t paused_len = (uint8_t)(sizeof(paused_tiles) / sizeof(paused_tiles[0]));
 
     if (visible) {
+        tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
         for (uint8_t i = 0; i < paused_len; ++i) {
             tile_mode2_write_tile(
                 STARFIELD_HUD_DATA,
@@ -432,6 +456,112 @@ void tile_mode2_set_paused_banner(bool visible)
             (uint8_t)(PAUSED_TEXT_X + i),
             PAUSED_TEXT_Y,
             0
+        );
+    }
+}
+
+void tile_mode2_set_level_banner(uint8_t level, bool visible)
+{
+    uint8_t level_tiles[LEVEL_TEXT_LEN] = {
+        238, // L
+        231, // E
+        248, // V
+        231, // E
+        238, // L
+        0,   // space
+        19,  // 0
+        19,  // 0
+    };
+
+    if (!visible) {
+        tile_mode2_clear_hud_text(LEVEL_TEXT_X, LEVEL_TEXT_Y, LEVEL_TEXT_LEN);
+        return;
+    }
+
+    if (level > 99) {
+        level = 99;
+    }
+
+    level_tiles[6] = (uint8_t)(SCORE_TILE_INDEX_BASE + (level / 10u));
+    level_tiles[7] = (uint8_t)(SCORE_TILE_INDEX_BASE + (level % 10u));
+
+    tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
+    for (uint8_t i = 0; i < LEVEL_TEXT_LEN; ++i) {
+        tile_mode2_write_tile(
+            STARFIELD_HUD_DATA,
+            STARFIELD_HUD_WIDTH,
+            (uint8_t)(LEVEL_TEXT_X + i),
+            LEVEL_TEXT_Y,
+            level_tiles[i]
+        );
+    }
+}
+
+void tile_mode2_set_level_complete_banner(bool visible)
+{
+    static const uint8_t level_complete_tiles[LEVEL_COMPLETE_TEXT_LEN] = {
+        238, // L
+        231, // E
+        248, // V
+        231, // E
+        238, // L
+        0,   // space
+        229, // C
+        241, // O
+        239, // M
+        242, // P
+        238, // L
+        231, // E
+        246, // T
+        231, // E
+    };
+
+    if (!visible) {
+        tile_mode2_clear_hud_text(LEVEL_COMPLETE_TEXT_X, LEVEL_COMPLETE_TEXT_Y, LEVEL_COMPLETE_TEXT_LEN);
+        return;
+    }
+
+    tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
+    for (uint8_t i = 0; i < LEVEL_COMPLETE_TEXT_LEN; ++i) {
+        tile_mode2_write_tile(
+            STARFIELD_HUD_DATA,
+            STARFIELD_HUD_WIDTH,
+            (uint8_t)(LEVEL_COMPLETE_TEXT_X + i),
+            LEVEL_COMPLETE_TEXT_Y,
+            level_complete_tiles[i]
+        );
+    }
+}
+
+void tile_mode2_set_bonus_continue_prompt(bool visible)
+{
+    static const uint8_t press_start_tiles[BONUS_CONTINUE_TEXT_LEN] = {
+        242, // P
+        244, // R
+        231, // E
+        245, // S
+        245, // S
+        0,   // space
+        245, // S
+        246, // T
+        227, // A
+        244, // R
+        246, // T
+    };
+
+    if (!visible) {
+        tile_mode2_clear_hud_text(BONUS_CONTINUE_TEXT_X, BONUS_CONTINUE_TEXT_Y, BONUS_CONTINUE_TEXT_LEN);
+        return;
+    }
+
+    tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
+    for (uint8_t i = 0; i < BONUS_CONTINUE_TEXT_LEN; ++i) {
+        tile_mode2_write_tile(
+            STARFIELD_HUD_DATA,
+            STARFIELD_HUD_WIDTH,
+            (uint8_t)(BONUS_CONTINUE_TEXT_X + i),
+            BONUS_CONTINUE_TEXT_Y,
+            press_start_tiles[i]
         );
     }
 }

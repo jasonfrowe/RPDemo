@@ -20,6 +20,7 @@ void enemy_update(void);
 uint8_t enemy_get_level(void);
 uint8_t enemy_get_subwave(void);
 bool enemy_is_level_complete(void);
+bool enemy_has_active(void);
 bool enemy_hit_test_player(int16_t x, int16_t y, int16_t width, int16_t height);
 void enemy_clear_all(void);
 void enemy_prepare_bonus_icons(void);

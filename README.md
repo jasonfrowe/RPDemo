@@ -1299,6 +1299,13 @@ Score display location:
 - Combo multiplier indicator uses the bottom-left HUD tiles `(0,28)` and `(1,28)` as `<digit>x`.
 - Tile index `225` is used for the `x` symbol.
 - While paused, `PAUSED` is rendered near HUD center using explicit tiles `242, 227, 247, 245, 231, 230`.
+- HUD text messages force HUD palette index `2` to `0x57FF` (yellow) while drawing so title rainbow cycling does not tint gameplay text.
+
+Gameplay transition messages:
+- At level start (during fast->slow scroll transition), HUD shows `LEVEL XX`.
+- `LEVEL XX` is removed once enemies start spawning.
+- When a level completes, HUD shows `LEVEL COMPLETE` during autopilot movement to bonus position.
+- After autopilot reaches the bonus position, there is a `1` second hold before bonus tally starts.
 
 In `tile_mode2.c` we expose:
 
@@ -1592,6 +1599,9 @@ Scoring note:
 
 Health restoration:
 - 1 HP restored per enemy kill from the previous level (clamped to max).
+
+Bonus completion prompt:
+- After bonus tally and health refill complete, HUD shows `PRESS START` near the bottom.
 
 #### Music Flow
 
