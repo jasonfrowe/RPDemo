@@ -25,6 +25,10 @@ static Projectile projectiles[MAX_PROJECTILES];
 
 #define Q8_SHIFT 8
 #define TO_Q8(px) ((int32_t)(px) * (1 << Q8_SHIFT))
+#define PROJECTILE_HITBOX_OFFSET_X 3
+#define PROJECTILE_HITBOX_OFFSET_Y 2
+#define PROJECTILE_HITBOX_WIDTH 2
+#define PROJECTILE_HITBOX_HEIGHT 4
 
 static void projectile_deactivate(uint8_t slot)
 {
@@ -118,10 +122,10 @@ bool projectile_hit_test_enemy(int16_t x, int16_t y, int16_t width, int16_t heig
         if (!projectiles[i].active) continue;
         if (projectiles[i].owner != PROJECTILE_OWNER_PLAYER) continue;
 
-        bullet_left = (int16_t)(projectiles[i].x_q8 >> Q8_SHIFT);
-        bullet_top = (int16_t)(projectiles[i].y_q8 >> Q8_SHIFT);
-        bullet_right = (int16_t)(bullet_left + PROJECTILE_SPRITE_SIZE_PX);
-        bullet_bottom = (int16_t)(bullet_top + PROJECTILE_SPRITE_SIZE_PX);
+        bullet_left = (int16_t)((projectiles[i].x_q8 >> Q8_SHIFT) + PROJECTILE_HITBOX_OFFSET_X);
+        bullet_top = (int16_t)((projectiles[i].y_q8 >> Q8_SHIFT) + PROJECTILE_HITBOX_OFFSET_Y);
+        bullet_right = (int16_t)(bullet_left + PROJECTILE_HITBOX_WIDTH);
+        bullet_bottom = (int16_t)(bullet_top + PROJECTILE_HITBOX_HEIGHT);
 
         if (bullet_right <= x || bullet_left >= enemy_right ||
             bullet_bottom <= y || bullet_top >= enemy_bottom) {
@@ -150,10 +154,10 @@ bool projectile_hit_test_player(int16_t x, int16_t y, int16_t width, int16_t hei
         if (!projectiles[i].active) continue;
         if (projectiles[i].owner != PROJECTILE_OWNER_ENEMY) continue;
 
-        bullet_left = (int16_t)(projectiles[i].x_q8 >> Q8_SHIFT);
-        bullet_top = (int16_t)(projectiles[i].y_q8 >> Q8_SHIFT);
-        bullet_right = (int16_t)(bullet_left + PROJECTILE_SPRITE_SIZE_PX);
-        bullet_bottom = (int16_t)(bullet_top + PROJECTILE_SPRITE_SIZE_PX);
+        bullet_left = (int16_t)((projectiles[i].x_q8 >> Q8_SHIFT) + PROJECTILE_HITBOX_OFFSET_X);
+        bullet_top = (int16_t)((projectiles[i].y_q8 >> Q8_SHIFT) + PROJECTILE_HITBOX_OFFSET_Y);
+        bullet_right = (int16_t)(bullet_left + PROJECTILE_HITBOX_WIDTH);
+        bullet_bottom = (int16_t)(bullet_top + PROJECTILE_HITBOX_HEIGHT);
 
         if (bullet_right <= x || bullet_left >= player_right ||
             bullet_bottom <= y || bullet_top >= player_bottom) {

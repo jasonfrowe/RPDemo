@@ -65,11 +65,19 @@ static const uint16_t tile_hud_palette[16] = {
 void tile_mode2_init(void);
 void tile_mode2_start_gameplay_transition(void);
 void tile_mode2_start_game_over_transition(void);
+void tile_mode2_start_level_bonus_transition(void);
 bool tile_mode2_restore_hud_from_rom(void);
 void tile_mode2_update_title_palette(void);
 void tile_mode2_set_score(uint32_t score);
 void tile_mode2_set_health(uint8_t health);
 void tile_mode2_update_health_fx(bool damage_flash_active, bool low_health);
+void tile_mode2_clear_level_bonus(void);
+void tile_mode2_begin_level_bonus(uint8_t level, uint8_t multiplier);
+void tile_mode2_set_bonus_row(uint8_t enemy_type, uint16_t kills, uint16_t points_each, uint16_t subtotal);
+void tile_mode2_set_bonus_pending_total(uint32_t pending_total);
+int16_t tile_mode2_get_bonus_icon_target_x(void);
+int16_t tile_mode2_get_bonus_icon_target_y(uint8_t enemy_type);
+void tile_mode2_render_level_bonus(uint8_t level, const uint16_t *kills, uint8_t multiplier);
 void tile_mode2_update_scroll(void);
 
 #endif // TILE_MODE2_H

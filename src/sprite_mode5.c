@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "constants.h"
+#include "player_controller.h"
 #include "sprite_mode5.h"
 
 // Store the player config address for updates
@@ -221,4 +222,19 @@ void sprite_mode5_set_damage_flash(bool active)
     damage_flash_active = active;
     color = active ? player_palette[12] : player_palette[15];
     sprite_mode5_write_palette_entry(15, color);
+}
+
+void sprite_mode5_hide_player(void)
+{
+    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, x_pos_px, -32);
+    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, y_pos_px, -32);
+}
+
+void sprite_mode5_show_player(void)
+{
+    int16_t x;
+    int16_t y;
+
+    player_controller_get_position(&x, &y);
+    sprite_mode5_set_position(x, y);
 }

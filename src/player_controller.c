@@ -124,6 +124,21 @@ void player_controller_apply_damage(uint8_t amount)
     }
 }
 
+void player_controller_heal(uint8_t amount)
+{
+    uint16_t new_health;
+
+    if (amount == 0 || player_destroyed) {
+        return;
+    }
+
+    new_health = (uint16_t)player_health + amount;
+    if (new_health > PLAYER_MAX_HEALTH) {
+        new_health = PLAYER_MAX_HEALTH;
+    }
+    player_health = (uint8_t)new_health;
+}
+
 uint8_t player_controller_get_health(void)
 {
     return player_health;

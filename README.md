@@ -1478,6 +1478,66 @@ Player collision box tuning:
 Title screen player effect:
 - The player sprite engine glow palette animation now runs on the title screen as an ambient effect
 
+### 9. Level System and Between-Level Bonus
+
+The game now runs in levels. Each level is made of 7 subwaves (enemy types `0..6`).
+
+At the end of the 7th subwave:
+1. We enter a level bonus/intermission state.
+2. Scroll transitions to fast warp style (without restoring HUD from ROM).
+3. Music switches to `music/RESOURCE.006.vgm`.
+4. Bonus tally is rendered.
+5. Press and release START to begin the next level.
+
+#### Level Compositions
+
+Level 1:
+- `0x5`, `1x5`, `2x5`, `3x5`, `4x5`, `5x5`, `6x5`
+
+Level 2:
+- `0x5+1x1`, `1x5+2x1`, `2x5+3x1`, `3x5+4x1`, `4x5+5x1`, `5x5+6x1`, `6x5+4x1`
+
+Level 3:
+- `0x5+1x3`, `1x5+2x3`, `2x5+3x3`, `3x5+4x3`, `4x5+5x3`, `5x5+6x2+5x1`, `6x5+4x3`
+
+Level 4:
+- `0x5+1x5`, `1x5+2x5`, `2x5+3x5`, `3x5+4x5`, `4x5+5x5`, `5x5+6x5`, `6x5+4x5`
+
+Level 5+:
+- Uses fixed scripted mixed tables (deterministic), up to 15 enemies in a subwave.
+
+#### Bonus Tally
+
+Bonus tally uses total kills by enemy type across the full previous level.
+
+Display format is per row:
+- enemy icon (sprite)
+- 2-digit kill count
+- tile `250` for `x`
+- points-per-kill (scaled)
+- tile `251` for `=`
+- row subtotal
+
+Score scaling by level:
+- Level 1: base values (`10, 15, 20, ...`)
+- Level 2: base x2 (`20, 30, 40, ...`)
+- Level 3: base x3 (`30, 45, 60, ...`)
+- Level 4+: base x(level)
+
+Health restoration:
+- 1 HP restored per enemy kill from the previous level (clamped to max).
+
+#### Music Flow
+
+Gameplay tracks by level:
+- Level 1: `music/RESOURCE.005.vgm`
+- Level 2: `music/RESOURCE.003.vgm`
+- Level 3: `music/RESOURCE.008.vgm`
+- Level 4+: `music/RESOURCE.009.vgm`
+
+Intermission track:
+- Between levels: `music/RESOURCE.006.vgm`
+
 #### Game Over State
 
 A dedicated game-over state is now part of the state machine.

@@ -10,6 +10,7 @@ void player_controller_update(void);
 void player_controller_get_position(int16_t *x, int16_t *y);
 void player_controller_get_center_position(int16_t *x, int16_t *y);
 void player_controller_apply_damage(uint8_t amount);
+void player_controller_heal(uint8_t amount);
 uint8_t player_controller_get_health(void);
 bool player_controller_is_destroyed(void);
 bool player_controller_is_death_animation_complete(void);

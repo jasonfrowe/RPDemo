@@ -41,6 +41,14 @@ static uint8_t health_flash_tick = 0;
 #define SCORE_TILE_Y 1
 #define SCORE_TILE_INDEX_BASE 19
 #define HEALTH_FLASH_TOGGLE_FRAMES 3
+#define BONUS_TABLE_X 10
+#define BONUS_TABLE_Y 5
+#define BONUS_TABLE_ROWS 19
+#define BONUS_TABLE_WIDTH 26
+#define BONUS_ROW_Y_START (BONUS_TABLE_Y + 2)
+#define BONUS_ROW_Y_STEP 2
+#define BONUS_TOTAL_Y (BONUS_TABLE_Y + 16)
+#define BONUS_ICON_TILE_X BONUS_TABLE_X
 
 #ifndef COLOR_FROM_RGB8
 #define COLOR_FROM_RGB8(r,g,b) (((b>>3)<<11)|((g>>3)<<6)|(r>>3))
@@ -80,6 +88,64 @@ static void tile_mode2_write_tile(unsigned tilemap_addr, uint8_t width, uint8_t 
     RIA.addr0 = tilemap_addr + ((unsigned)y * width) + x;
     RIA.step0 = 1;
     RIA.rw0 = tile_index;
+}
+
+static void tile_mode2_write_two_digits(uint8_t x, uint8_t y, uint16_t value)
+{
+    uint8_t tens;
+    uint8_t ones;
+
+    if (value > 99) {
+        value = 99;
+    }
+
+    tens = (uint8_t)(value / 10u);
+    ones = (uint8_t)(value % 10u);
+
+    tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, (uint8_t)(SCORE_TILE_INDEX_BASE + tens));
+    tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 1), y, (uint8_t)(SCORE_TILE_INDEX_BASE + ones));
+}
+
+static void tile_mode2_write_four_digits(uint8_t x, uint8_t y, uint16_t value)
+{
+    uint16_t divisor = 1000;
+
+    for (uint8_t i = 0; i < 4; ++i) {
+        uint8_t digit = (uint8_t)(value / divisor);
+        value = (uint16_t)(value % divisor);
+        divisor = (uint16_t)(divisor / 10u);
+        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, (uint8_t)(SCORE_TILE_INDEX_BASE + digit));
+    }
+}
+
+static void tile_mode2_write_five_digits(uint8_t x, uint8_t y, uint32_t value)
+{
+    uint32_t divisor = 10000u;
+
+    if (value > 99999u) {
+        value = 99999u;
+    }
+
+    for (uint8_t i = 0; i < 5; ++i) {
+        uint8_t digit = (uint8_t)(value / divisor);
+        value = value % divisor;
+        divisor /= 10u;
+        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, (uint8_t)(SCORE_TILE_INDEX_BASE + digit));
+    }
+}
+
+static uint8_t tile_mode2_bonus_row_y(uint8_t enemy_type)
+{
+    return (uint8_t)(BONUS_ROW_Y_START + (enemy_type * BONUS_ROW_Y_STEP));
+}
+
+static void tile_mode2_clear_bonus_table_area(void)
+{
+    for (uint8_t y = BONUS_TABLE_Y; y < (BONUS_TABLE_Y + BONUS_TABLE_ROWS); ++y) {
+        for (uint8_t x = BONUS_TABLE_X; x < (BONUS_TABLE_X + BONUS_TABLE_WIDTH); ++x) {
+            tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, 0);
+        }
+    }
 }
 
 static void tile_mode2_clear_title_banner(void)
@@ -306,6 +372,19 @@ void tile_mode2_start_game_over_transition(void)
     }
 }
 
+void tile_mode2_start_level_bonus_transition(void)
+{
+    bg_scroll_speed_half = BG_SCROLL_SPEED_HALF_PX;
+    fg_scroll_target_half = FG_SCROLL_SPEED_HALF_PX;
+    fg_slowdown_tick = 0;
+    gameplay_transition_active = true;
+    transition_to_gameplay = false;
+    if (warp_tiles_replaced) {
+        tile_mode2_restore_warp_tiles();
+        warp_tiles_replaced = false;
+    }
+}
+
 bool tile_mode2_restore_hud_from_rom(void)
 {
     int fd;
@@ -396,6 +475,91 @@ void tile_mode2_update_health_fx(bool damage_flash_active, bool low_health)
         current_health_palette_color = desired_color;
         tile_mode2_write_hud_palette_entry(10, desired_color);
     }
+}
+
+void tile_mode2_clear_level_bonus(void)
+{
+    tile_mode2_clear_bonus_table_area();
+}
+
+void tile_mode2_begin_level_bonus(uint8_t level, uint8_t multiplier)
+{
+    tile_mode2_clear_level_bonus();
+
+    tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 2), BONUS_TABLE_Y, level);
+    tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 7), BONUS_TABLE_Y, multiplier);
+
+    for (uint8_t type = 0; type < ENEMY_TYPE_COUNT; ++type) {
+        uint8_t row_y = tile_mode2_bonus_row_y(type);
+        tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 3), row_y, 0);
+        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 5), row_y, 250);
+        tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 7), row_y, 0);
+        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 9), row_y, 251);
+        tile_mode2_write_four_digits((uint8_t)(BONUS_TABLE_X + 11), row_y, 0);
+    }
+
+    tile_mode2_set_bonus_pending_total(0);
+}
+
+void tile_mode2_set_bonus_row(uint8_t enemy_type, uint16_t kills, uint16_t points_each, uint16_t subtotal)
+{
+    uint8_t row_y;
+
+    if (enemy_type >= ENEMY_TYPE_COUNT) {
+        return;
+    }
+
+    row_y = tile_mode2_bonus_row_y(enemy_type);
+
+    tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 3), row_y, kills);
+    tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 5), row_y, 250);
+    tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 7), row_y, points_each);
+    tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 9), row_y, 251);
+    tile_mode2_write_four_digits((uint8_t)(BONUS_TABLE_X + 11), row_y, subtotal);
+}
+
+void tile_mode2_set_bonus_pending_total(uint32_t pending_total)
+{
+    tile_mode2_write_five_digits((uint8_t)(BONUS_TABLE_X + 10), BONUS_TOTAL_Y, pending_total);
+}
+
+int16_t tile_mode2_get_bonus_icon_target_x(void)
+{
+    return (int16_t)(BONUS_ICON_TILE_X * 8);
+}
+
+int16_t tile_mode2_get_bonus_icon_target_y(uint8_t enemy_type)
+{
+    if (enemy_type >= ENEMY_TYPE_COUNT) {
+        enemy_type = 0;
+    }
+
+    return (int16_t)(tile_mode2_bonus_row_y(enemy_type) * 8);
+}
+
+void tile_mode2_render_level_bonus(uint8_t level, const uint16_t *kills, uint8_t multiplier)
+{
+    uint32_t total_bonus = 0;
+
+    tile_mode2_begin_level_bonus(level, multiplier);
+
+    for (uint8_t type = 0; type < ENEMY_TYPE_COUNT; ++type) {
+        uint16_t base_points = (uint16_t)(10u + ((uint16_t)type * 5u));
+        uint16_t points_each;
+        uint16_t subtotal;
+
+        if (base_points > 40u) {
+            base_points = 40u;
+        }
+
+        points_each = (uint16_t)(base_points * multiplier);
+        subtotal = (uint16_t)(kills[type] * points_each);
+        total_bonus += subtotal;
+
+        tile_mode2_set_bonus_row(type, kills[type], points_each, subtotal);
+    }
+
+    tile_mode2_set_bonus_pending_total(total_bonus);
 }
 
 void tile_mode2_update_scroll(void) {
