@@ -49,6 +49,9 @@
 #define BOSS_VARIANT_TWO   2
 #define BOSS_VARIANT_THREE 3
 #define BOSS_VARIANT_FOUR  4
+#define BOSS_VARIANT_FIVE  5
+#define BOSS_VARIANT_SIX   6
+#define BOSS_VARIANT_SEVEN 7
 #define BOSS_VARIANT_FOUR_MIN_ENEMIES_FOR_DAMAGE 3
 #define BOSS_LEVEL_TWO_FRAME_SET_A_BASE 68
 #define BOSS_LEVEL_TWO_FRAME_SET_B_BASE 74
@@ -61,6 +64,15 @@
 #define BOSS_LEVEL_FOUR_FRAME_SET_A_BASE 104
 #define BOSS_LEVEL_FOUR_FRAME_SET_B_BASE 110
 #define BOSS_LEVEL_FOUR_FRAME_SET_ATTACK_BASE 116
+#define BOSS_LEVEL_FIVE_FRAME_SET_A_BASE 122
+#define BOSS_LEVEL_FIVE_FRAME_SET_B_BASE 128
+#define BOSS_LEVEL_FIVE_FRAME_SET_ATTACK_BASE 134
+#define BOSS_LEVEL_SIX_FRAME_SET_A_BASE 140
+#define BOSS_LEVEL_SIX_FRAME_SET_B_BASE 146
+#define BOSS_LEVEL_SIX_FRAME_SET_ATTACK_BASE 152
+#define BOSS_LEVEL_SEVEN_FRAME_SET_A_BASE 158
+#define BOSS_LEVEL_SEVEN_FRAME_SET_B_BASE 164
+#define BOSS_LEVEL_SEVEN_FRAME_SET_ATTACK_BASE 170
 #define BOSS_WAVE_DIVE_EXIT_SPEED_PX 3
 #define BOSS_WAVE_DIVE_RISE_SPEED_PX 3
 #define BOSS_WAVE_DIVE_UNDER_PLAYER_OFFSET_PX 2
@@ -248,7 +260,28 @@ void gameplay_boss_begin(gameplay_runtime_t *state)
 {
     int16_t boss_height = (int16_t)(BOSS_GRID_ROWS * ENEMY_SPRITE_SIZE_PX);
 
-    if (state->current_level >= 4) {
+    if (state->current_level >= 7) {
+        boss_variant = BOSS_VARIANT_SEVEN;
+        boss_frame_set_a_base = BOSS_LEVEL_SEVEN_FRAME_SET_A_BASE;
+        boss_frame_set_b_base = BOSS_LEVEL_SEVEN_FRAME_SET_B_BASE;
+        boss_frame_set_attack_base = BOSS_LEVEL_SEVEN_FRAME_SET_ATTACK_BASE;
+        boss_collision_x_min = BOSS_WEAKSPOT_X_MIN;
+        boss_collision_x_max = BOSS_WEAKSPOT_X_MAX;
+    } else if (state->current_level >= 6) {
+        boss_variant = BOSS_VARIANT_SIX;
+        boss_frame_set_a_base = BOSS_LEVEL_SIX_FRAME_SET_A_BASE;
+        boss_frame_set_b_base = BOSS_LEVEL_SIX_FRAME_SET_B_BASE;
+        boss_frame_set_attack_base = BOSS_LEVEL_SIX_FRAME_SET_ATTACK_BASE;
+        boss_collision_x_min = BOSS_WEAKSPOT_X_MIN;
+        boss_collision_x_max = BOSS_WEAKSPOT_X_MAX;
+    } else if (state->current_level >= 5) {
+        boss_variant = BOSS_VARIANT_FIVE;
+        boss_frame_set_a_base = BOSS_LEVEL_FIVE_FRAME_SET_A_BASE;
+        boss_frame_set_b_base = BOSS_LEVEL_FIVE_FRAME_SET_B_BASE;
+        boss_frame_set_attack_base = BOSS_LEVEL_FIVE_FRAME_SET_ATTACK_BASE;
+        boss_collision_x_min = BOSS_WEAKSPOT_X_MIN;
+        boss_collision_x_max = BOSS_WEAKSPOT_X_MAX;
+    } else if (state->current_level >= 4) {
         boss_variant = BOSS_VARIANT_FOUR;
         boss_frame_set_a_base = BOSS_LEVEL_FOUR_FRAME_SET_A_BASE;
         boss_frame_set_b_base = BOSS_LEVEL_FOUR_FRAME_SET_B_BASE;

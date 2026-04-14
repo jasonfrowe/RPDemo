@@ -49,7 +49,7 @@
 // Player health and damage tuning
 #define PLAYER_MAX_HEALTH           48
 #define PLAYER_LOW_HEALTH_THRESHOLD 12
-#define PLAYER_BULLET_DAMAGE         4
+#define PLAYER_BULLET_DAMAGE         0
 #define PLAYER_CONTACT_DAMAGE        4
 #define PLAYER_HIT_COOLDOWN_FRAMES 108
 #define PLAYER_HIT_FLASH_FRAMES     96
@@ -111,7 +111,7 @@
 #define BOSS_STAGE_MUSIC_TRACK "music/RESOURCE.009.vgm"
 
 #define ENEMY_DATA             (PROJECTILE_DATA + PROJECTILE_DATA_SIZE) // Address for enemy sprite data
-#define ENEMY_DATA_SIZE        0x3D00U              // 15616 bytes (122 frames 16x16 at 4bpp)
+#define ENEMY_DATA_SIZE        0x5800U              // 22528 bytes (176 frames 16x16 at 4bpp)
 #define ENEMY_SPRITE_SIZE_PX   16
 #define ENEMY_FRAME_SIZE       0x0080U              // 128 bytes per 16x16 4bpp frame
 #define ENEMY_TYPE_COUNT       7
