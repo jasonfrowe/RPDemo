@@ -4,6 +4,7 @@
 #include "constants.h"
 #include "projectile.h"
 #include "player_controller.h"
+#include "rng.h"
 #include "sprite_mode5.h"
 
 typedef enum {
@@ -44,21 +45,9 @@ static uint16_t pickup_rng = 0xA37Fu;
 
 static void projectile_deactivate(uint8_t slot);
 
-static uint16_t projectile_rand(void)
-{
-    pickup_rng = (uint16_t)(pickup_rng * 25173u + 13849u);
-    return pickup_rng;
-}
-
-static int16_t projectile_rand_range(int16_t min_value, int16_t max_value)
-{
-    uint16_t span = (uint16_t)(max_value - min_value + 1);
-    return (int16_t)(min_value + (projectile_rand() % span));
-}
-
 static uint8_t projectile_roll_pickup_frame(void)
 {
-    uint8_t roll = (uint8_t)(projectile_rand() % 100u);
+    uint8_t roll = (uint8_t)(rng_next(&pickup_rng) % 100u);
 
     if (roll < 50u) {
         return NO_PICKUP_FRAME;
@@ -83,7 +72,7 @@ static bool projectile_try_spawn_pickup(int16_t x, int16_t y, uint8_t frame_inde
         projectiles[i].owner = PROJECTILE_OWNER_PICKUP;
         projectiles[i].x_q8 = TO_Q8(x);
         projectiles[i].y_q8 = TO_Q8(y);
-        projectiles[i].vx_q8 = (projectile_rand() & 1u) ? PICKUP_VX_Q8 : (int16_t)-PICKUP_VX_Q8;
+        projectiles[i].vx_q8 = (rng_next(&pickup_rng) & 1u) ? PICKUP_VX_Q8 : (int16_t)-PICKUP_VX_Q8;
         projectiles[i].vy_q8 = PICKUP_VY_Q8;
         projectiles[i].frame_index = frame_index;
         projectiles[i].anim_tick = 0;
@@ -265,7 +254,7 @@ void projectile_spawn_asteroid_wave(uint8_t count)
                 continue;
             }
 
-            x = projectile_rand_range(8, (int16_t)(SCREEN_WIDTH - PROJECTILE_SPRITE_SIZE_PX - 8));
+            x = rng_range(&pickup_rng, 8, (int16_t)(SCREEN_WIDTH - PROJECTILE_SPRITE_SIZE_PX - 8));
             y = (int16_t)(HUD_TOP_PX - PROJECTILE_SPRITE_SIZE_PX - (spawned * 12));
             projectiles[i].active = true;
             projectiles[i].owner = PROJECTILE_OWNER_ASTEROID;

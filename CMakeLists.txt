@@ -40,6 +40,7 @@ target_sources(RPDemo PRIVATE
     src/gameplay_game_over.c
     src/gameplay_boss.c
     src/projectile.c
+    src/rng.c
     src/enemy.c
     src/score.c
     src/level_bonus.c
@@ -50,6 +51,7 @@ target_sources(RPDemo PRIVATE
 
 # Additional size-focused flags on top of MinSizeRel.
 target_compile_options(RPDemo PRIVATE
+    -Oz
     -ffunction-sections
     -fdata-sections
     -flto

@@ -6,6 +6,7 @@
 #include "enemy.h"
 #include "player_controller.h"
 #include "projectile.h"
+#include "rng.h"
 #include "score.h"
 #include "sprite_mode5.h"
 #include "tile_mode2.h"
@@ -218,18 +219,6 @@ static const int8_t spiral_dirs[16][2] = {
     { 6, -6},
     { 7, -3},
 };
-
-static uint16_t enemy_rand(void)
-{
-    rng_state = (uint16_t)(rng_state * 25173u + 13849u);
-    return rng_state;
-}
-
-static int16_t enemy_rand_range(int16_t min_value, int16_t max_value)
-{
-    uint16_t span = (uint16_t)(max_value - min_value + 1);
-    return (int16_t)(min_value + (enemy_rand() % span));
-}
 
 static int16_t enemy_abs16(int16_t value)
 {
@@ -923,7 +912,7 @@ static void enemy_prepare_wave(void)
     if (active_wave_id == 0) {
         active_wave_id = 1;
     }
-    wave_variant = (uint8_t)(enemy_rand() & 1u);
+    wave_variant = (uint8_t)(rng_next(&rng_state) & 1u);
     int16_t formation_width;
     WaveGroup *group = enemy_wave_group_get(active_wave_id);
 
@@ -977,8 +966,8 @@ static void enemy_prepare_wave(void)
 
     switch (wave_type) {
         case 0:
-            wave_origin_x = enemy_rand_range(48, (int16_t)(SCREEN_WIDTH - ENEMY_SPRITE_SIZE_PX - 48));
-            wave_type0_shots_remaining = (uint8_t)(1u + (enemy_rand() & 1u));
+            wave_origin_x = rng_range(&rng_state, 48, (int16_t)(SCREEN_WIDTH - ENEMY_SPRITE_SIZE_PX - 48));
+            wave_type0_shots_remaining = (uint8_t)(1u + (rng_next(&rng_state) & 1u));
             break;
 
         case 5:
@@ -1076,7 +1065,7 @@ static void spawn_enemy(uint8_t slot, uint8_t enemy_type, uint8_t wave_slot)
             uint8_t rank = (uint8_t)(wave_slot / ENEMY_WAVE_SIZE);
             uint8_t group_rank = (uint8_t)(enemy_count_active_type(3) / ENEMY_WAVE_SIZE);
             enemies[slot].phase = TYPE3_PHASE_MOVE;
-            enemies[slot].x_q8 = TO_Q8(enemy_rand_range(24, (int16_t)(SCREEN_WIDTH - ENEMY_SPRITE_SIZE_PX - 24)));
+            enemies[slot].x_q8 = TO_Q8(rng_range(&rng_state, 24, (int16_t)(SCREEN_WIDTH - ENEMY_SPRITE_SIZE_PX - 24)));
             enemies[slot].y_q8 = TO_Q8((int16_t)(-ENEMY_SPRITE_SIZE_PX));
             if (wave_variant == 0) {
                 static const int16_t target_xs[ENEMY_WAVE_SIZE] = {44, 104, 152, 208, 264};
@@ -1098,7 +1087,7 @@ static void spawn_enemy(uint8_t slot, uint8_t enemy_type, uint8_t wave_slot)
 
         case 4:
             enemies[slot].phase = TYPE4_PHASE_DESCEND;
-            enemies[slot].x_q8 = TO_Q8(enemy_rand_range(24, (int16_t)(SCREEN_WIDTH - ENEMY_SPRITE_SIZE_PX - 24)));
+            enemies[slot].x_q8 = TO_Q8(rng_range(&rng_state, 24, (int16_t)(SCREEN_WIDTH - ENEMY_SPRITE_SIZE_PX - 24)));
             enemies[slot].y_q8 = TO_Q8((int16_t)(-ENEMY_SPRITE_SIZE_PX));
             enemies[slot].timer = (uint16_t)(36 + (wave_slot * 12));
             break;
@@ -1126,7 +1115,7 @@ static void spawn_enemy(uint8_t slot, uint8_t enemy_type, uint8_t wave_slot)
 
         case 6:
             enemies[slot].phase = TYPE6_PHASE_CHASE;
-            enemies[slot].x_q8 = TO_Q8(enemy_rand_range(24, (int16_t)(SCREEN_WIDTH - ENEMY_SPRITE_SIZE_PX - 24)));
+            enemies[slot].x_q8 = TO_Q8(rng_range(&rng_state, 24, (int16_t)(SCREEN_WIDTH - ENEMY_SPRITE_SIZE_PX - 24)));
             enemies[slot].y_q8 = TO_Q8((int16_t)(-ENEMY_SPRITE_SIZE_PX));
             break;
 
@@ -1164,7 +1153,7 @@ static void update_pattern0(uint8_t slot)
         if (wave_type0_shots_remaining > 0 &&
             FROM_Q8(enemies[slot].y_q8) >= (HUD_TOP_PX + 20) &&
             FROM_Q8(enemies[slot].y_q8) < (SCREEN_HEIGHT - 48) &&
-            (enemy_rand() & 0x3Fu) == 0u) {
+            (rng_next(&rng_state) & 0x3Fu) == 0u) {
             if (enemy_fire_aimed(slot, BULLET_MEDIUM_SPEED_Q8)) {
                 wave_type0_shots_remaining--;
             }
@@ -1637,7 +1626,7 @@ void enemy_update(void)
                 } else {
                     wave_spawned = 0;
                     if (current_subwave > 6 && current_subwave < 11) {
-                        projectile_spawn_asteroid_wave((uint8_t)(1u + (enemy_rand() % 3u)));
+                        projectile_spawn_asteroid_wave((uint8_t)(1u + (rng_next(&rng_state) % 3u)));
                     }
                     wave_timer = 0;
                     wave_state = WAVE_STATE_DELAY;
