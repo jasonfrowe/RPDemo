@@ -40,6 +40,9 @@ static Projectile projectiles[MAX_PROJECTILES];
 #define PICKUP_VX_Q8 TO_Q8(2)
 #define PICKUP_VY_Q8 (TO_Q8(1) / 4)
 #define NO_PICKUP_FRAME 0xFFu
+#define PICKUP_EMPTY_CHANCE 50u
+#define PICKUP_ENERGY_CHANCE 45u
+#define PICKUP_POWER_CHANCE 3u
 
 static uint16_t pickup_rng = 0xA37Fu;
 
@@ -49,13 +52,13 @@ static uint8_t projectile_roll_pickup_frame(void)
 {
     uint8_t roll = (uint8_t)(rng_next(&pickup_rng) % 100u);
 
-    if (roll < 50u) {
+    if (roll < PICKUP_EMPTY_CHANCE) {
         return NO_PICKUP_FRAME;
     }
-    if (roll < 90u) {
+    if (roll < (uint8_t)(PICKUP_EMPTY_CHANCE + PICKUP_ENERGY_CHANCE)) {
         return PICKUP_ENERGY_FRAME;
     }
-    if (roll < 95u) {
+    if (roll < (uint8_t)(PICKUP_EMPTY_CHANCE + PICKUP_ENERGY_CHANCE + PICKUP_POWER_CHANCE)) {
         return PICKUP_POWER_FRAME;
     }
     return PICKUP_SPEED_FRAME;
@@ -348,21 +351,28 @@ bool projectile_hit_test_player(int16_t x, int16_t y, int16_t width, int16_t hei
     int16_t player_bottom = (int16_t)(y + height);
 
     for (uint8_t i = FIRST_ENEMY_PROJECTILE_SLOT; i < MAX_PROJECTILES; i++) {
-        int16_t bullet_left;
-        int16_t bullet_top;
-        int16_t bullet_right;
-        int16_t bullet_bottom;
+        int16_t hazard_left;
+        int16_t hazard_top;
+        int16_t hazard_right;
+        int16_t hazard_bottom;
 
         if (!projectiles[i].active) continue;
-        if (projectiles[i].owner != PROJECTILE_OWNER_ENEMY) continue;
+        if (projectiles[i].owner == PROJECTILE_OWNER_ENEMY) {
+            hazard_left = (int16_t)((projectiles[i].x_q8 >> Q8_SHIFT) + PROJECTILE_HITBOX_OFFSET_X);
+            hazard_top = (int16_t)((projectiles[i].y_q8 >> Q8_SHIFT) + PROJECTILE_HITBOX_OFFSET_Y);
+            hazard_right = (int16_t)(hazard_left + PROJECTILE_HITBOX_WIDTH);
+            hazard_bottom = (int16_t)(hazard_top + PROJECTILE_HITBOX_HEIGHT);
+        } else if (projectiles[i].owner == PROJECTILE_OWNER_ASTEROID) {
+            hazard_left = (int16_t)((projectiles[i].x_q8 >> Q8_SHIFT) + ASTEROID_PICKUP_HITBOX_OFFSET);
+            hazard_top = (int16_t)((projectiles[i].y_q8 >> Q8_SHIFT) + ASTEROID_PICKUP_HITBOX_OFFSET);
+            hazard_right = (int16_t)(hazard_left + ASTEROID_PICKUP_HITBOX_SIZE);
+            hazard_bottom = (int16_t)(hazard_top + ASTEROID_PICKUP_HITBOX_SIZE);
+        } else {
+            continue;
+        }
 
-        bullet_left = (int16_t)((projectiles[i].x_q8 >> Q8_SHIFT) + PROJECTILE_HITBOX_OFFSET_X);
-        bullet_top = (int16_t)((projectiles[i].y_q8 >> Q8_SHIFT) + PROJECTILE_HITBOX_OFFSET_Y);
-        bullet_right = (int16_t)(bullet_left + PROJECTILE_HITBOX_WIDTH);
-        bullet_bottom = (int16_t)(bullet_top + PROJECTILE_HITBOX_HEIGHT);
-
-        if (bullet_right <= x || bullet_left >= player_right ||
-            bullet_bottom <= y || bullet_top >= player_bottom) {
+        if (hazard_right <= x || hazard_left >= player_right ||
+            hazard_bottom <= y || hazard_top >= player_bottom) {
             continue;
         }
 

@@ -1817,6 +1817,57 @@ bool enemy_is_game_over_animation_complete(void)
 
 void enemy_spawn_for_boss(uint8_t enemy_type, uint8_t wave_slot)
 {
+    if (enemy_type == 5u) {
+        WaveGroup *group;
+        uint8_t cols = ENEMY_WAVE_SIZE;
+        int16_t formation_width;
+
+        if (cols > TYPE5_MAX_COLUMNS) {
+            cols = TYPE5_MAX_COLUMNS;
+        }
+        if (cols == 0u) {
+            cols = 1u;
+        }
+
+        if (wave_slot == 0u) {
+            active_wave_id = (uint8_t)(active_wave_id + 1u);
+            if (active_wave_id == 0u) {
+                active_wave_id = 1u;
+            }
+
+            wave_variant = (uint8_t)(rng_next(&rng_state) & 1u);
+            group = enemy_wave_group_get(active_wave_id);
+
+            group->active = true;
+            group->wave_id = active_wave_id;
+            group->enemy_type = 5u;
+            group->type5_spawn_count = ENEMY_WAVE_SIZE;
+            group->type5_spawned_count = 0;
+            group->formation_columns = cols;
+            group->type_group_rank = (uint8_t)(enemy_count_active_type(5u) / ENEMY_WAVE_SIZE);
+            group->formation_started = false;
+            formation_width = (int16_t)(ENEMY_SPRITE_SIZE_PX + ((cols - 1u) * TYPE5_FORMATION_SPACING_X));
+            group->formation_anchor_x_q8 = TO_Q8((int16_t)((SCREEN_WIDTH - formation_width) / 2));
+            group->formation_anchor_y_q8 = TO_Q8((int16_t)(TYPE5_FORMATION_Y + (group->type_group_rank * (TYPE5_FORMATION_SPACING_Y * 3))));
+            group->formation_step_down_remaining_q8 = 0;
+            if (wave_variant == 0u) {
+                group->formation_vx_q8 = ENEMY_SLOW_SPEED_Q8;
+            } else {
+                group->formation_vx_q8 = (int16_t)-ENEMY_SLOW_SPEED_Q8;
+            }
+
+            formation_columns = cols;
+            type5_spawned_count = 0;
+            formation_started = false;
+        } else {
+            group = enemy_wave_group_get(active_wave_id);
+            if (!group->active || group->enemy_type != 5u || group->formation_columns == 0u) {
+                return;
+            }
+            formation_columns = group->formation_columns;
+        }
+    }
+
     uint8_t free_slot = enemy_find_free_slot();
     if (free_slot < MAX_ENEMIES) {
         spawn_enemy(free_slot, enemy_type, wave_slot);

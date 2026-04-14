@@ -27,6 +27,8 @@ typedef enum {
 #define BONUS_PAYOUT_STEP_FRAMES 3
 #define BONUS_HEALTH_STEP_FRAMES 6
 #define BONUS_BOSS_POINTS 10000
+#define BONUS_BOSS_HEALTH_BONUS 6
+#define BONUS_BASE_HEALTH_RECOVERY_CAP 24
 
 static bonus_phase_t bonus_phase = BONUS_PHASE_IDLE;
 static uint16_t bonus_kills[ENEMY_TYPE_COUNT];
@@ -72,6 +74,7 @@ void level_bonus_reset(void)
 void level_bonus_begin(uint8_t current_level, bool boss_defeated)
 {
     uint16_t total_kills = 0;
+    uint16_t base_health_recovery;
 
     bonus_multiplier = current_level;
     if (bonus_multiplier == 0) {
@@ -90,7 +93,14 @@ void level_bonus_begin(uint8_t current_level, bool boss_defeated)
     bonus_row_subtotal = 0;
     bonus_count_tick = 0;
     bonus_row_hold_timer = 0;
-    bonus_health_pending = (uint16_t)(total_kills / 3u);
+    base_health_recovery = (uint16_t)(total_kills / 3u);
+    if (base_health_recovery > BONUS_BASE_HEALTH_RECOVERY_CAP) {
+        base_health_recovery = BONUS_BASE_HEALTH_RECOVERY_CAP;
+    }
+    bonus_health_pending = base_health_recovery;
+    if (boss_defeated) {
+        bonus_health_pending = (uint16_t)(bonus_health_pending + BONUS_BOSS_HEALTH_BONUS);
+    }
     bonus_health_tick = 0;
     bonus_payout_tick = 0;
     bonus_pending_total = 0;

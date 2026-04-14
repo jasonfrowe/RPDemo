@@ -35,11 +35,15 @@
 #define BOSS_PROJECTILE_VX_Q8 0
 #define BOSS_PROJECTILE_VY_Q8 (3 << 8)
 #define BOSS_DAMAGE_PER_HIT 4
+#define BOSS_HIT_SCORE_POINTS 100
 #define BOSS_HIT_FLASH_FRAMES 12
 #define BOSS_WAVE_INITIAL_DELAY_FRAMES 180
 #define BOSS_WAVE_INTERVAL_FRAMES 420
 #define BOSS_WAVE_SPAWN_COUNT (ENEMY_WAVE_SIZE)
 #define BOSS_WAVE_INTER_SPAWN_FRAMES 12
+#define BOSS_WAVE_ASTEROID_COUNT 2
+#define BOSS_ASTEROID_WAVE_THIRD 3
+#define BOSS_ASTEROID_WAVE_SIXTH 6
 
 static bool boss_active = false;
 static int16_t boss_x = BOSS_START_X;
@@ -60,6 +64,7 @@ static uint8_t boss_wave_spawned = 0;
 static uint8_t boss_wave_type = 0;
 static uint8_t boss_wave_inter_spawn_timer = 0;
 static bool boss_wave_active = false;
+static uint8_t boss_wave_count = 0;
 
 static const int16_t boss_pivot_x[BOSS_PIVOT_COUNT] = {
     BOSS_PIVOT_LEFT_X,
@@ -119,6 +124,7 @@ void gameplay_boss_begin(gameplay_runtime_t *state)
     boss_wave_type = 0;
     boss_wave_inter_spawn_timer = 0;
     boss_wave_active = false;
+    boss_wave_count = 0;
     state->level_banner_visible = false;
     state->hud_health_last = player_controller_get_health();
     music_set_track(BOSS_STAGE_MUSIC_TRACK);
@@ -342,6 +348,7 @@ void gameplay_boss_update(gameplay_runtime_t *state)
         } else {
             boss_health = 0;
         }
+        score_add_points(BOSS_HIT_SCORE_POINTS);
         boss_hit_flash_timer = BOSS_HIT_FLASH_FRAMES;
         tile_mode2_set_boss_health(boss_health);
     }
@@ -380,6 +387,11 @@ void gameplay_boss_update(gameplay_runtime_t *state)
                 }
                 boss_wave_spawned = 0;
                 boss_wave_inter_spawn_timer = 0;
+                boss_wave_count++;
+                if (boss_wave_count == BOSS_ASTEROID_WAVE_THIRD ||
+                    boss_wave_count == BOSS_ASTEROID_WAVE_SIXTH) {
+                    projectile_spawn_asteroid_wave(BOSS_WAVE_ASTEROID_COUNT);
+                }
                 boss_wave_active = true;
             }
         } else {
@@ -423,6 +435,7 @@ void gameplay_boss_reset(void)
     boss_wave_type = 0;
     boss_wave_inter_spawn_timer = 0;
     boss_wave_active = false;
+    boss_wave_count = 0;
     sprite_mode5_set_boss_palette_active(false);
     tile_mode2_set_boss_hud_visible(false);
     sprite_mode5_hide_boss();
