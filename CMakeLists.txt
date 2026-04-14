@@ -21,13 +21,13 @@ rp6502_asset(RPStarHopper help src/help.txt)
 
 # ROM Assets
 rp6502_asset(RPStarHopper StarFields_HUD_map.bin images/StarFields_HUD_map1.bin)
-rp6502_asset(RPStarHopper RESOURCE.001.vgm music/RESOURCE.001.vgm)
-rp6502_asset(RPStarHopper RESOURCE.003.vgm music/RESOURCE.003.vgm)
-rp6502_asset(RPStarHopper RESOURCE.005.vgm music/RESOURCE.005.vgm)
-rp6502_asset(RPStarHopper RESOURCE.006.vgm music/RESOURCE.006.vgm)
-rp6502_asset(RPStarHopper RESOURCE.008.vgm music/RESOURCE.008.vgm)
-rp6502_asset(RPStarHopper RESOURCE.009.vgm music/RESOURCE.009.vgm)
-rp6502_asset(RPStarHopper RESOURCE.011.vgm music/RESOURCE.011.vgm)
+# rp6502_asset(RPStarHopper RESOURCE.001.vgm music/RESOURCE.001.vgm)
+# rp6502_asset(RPStarHopper RESOURCE.003.vgm music/RESOURCE.003.vgm)
+# rp6502_asset(RPStarHopper RESOURCE.005.vgm music/RESOURCE.005.vgm)
+# rp6502_asset(RPStarHopper RESOURCE.006.vgm music/RESOURCE.006.vgm)
+# rp6502_asset(RPStarHopper RESOURCE.008.vgm music/RESOURCE.008.vgm)
+# rp6502_asset(RPStarHopper RESOURCE.009.vgm music/RESOURCE.009.vgm)
+# rp6502_asset(RPStarHopper RESOURCE.011.vgm music/RESOURCE.011.vgm)
 
 
 

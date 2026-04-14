@@ -103,7 +103,7 @@ void level_bonus_begin(uint8_t current_level, bool boss_defeated)
     sprite_mode5_show_player();
 
     tile_mode2_start_level_bonus_transition();
-    music_set_track("ROM:RESOURCE.006.vgm");
+    music_set_track("music/RESOURCE.006.vgm");
     tile_mode2_set_level_complete_banner(false);
     tile_mode2_begin_level_bonus(current_level, bonus_multiplier);
     tile_mode2_set_bonus_pending_total(0);
