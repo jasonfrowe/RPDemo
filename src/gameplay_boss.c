@@ -139,16 +139,15 @@ void gameplay_boss_update(gameplay_runtime_t *state)
         }
     }
 
-    // TEMP: boss-body contact damage disabled while debugging input/start instability.
-    // if (player_controller_can_take_damage()) {
-    //     if (hitbox_x < (int16_t)(boss_x + (BOSS_GRID_COLS * ENEMY_SPRITE_SIZE_PX)) &&
-    //         (int16_t)(hitbox_x + PLAYER_HITBOX_SIZE) > boss_x &&
-    //         hitbox_y < (int16_t)(boss_y + (BOSS_GRID_ROWS * ENEMY_SPRITE_SIZE_PX)) &&
-    //         (int16_t)(hitbox_y + PLAYER_HITBOX_SIZE) > boss_y) {
-    //         player_controller_apply_damage(PLAYER_CONTACT_DAMAGE);
-    //         took_damage = true;
-    //     }
-    // }
+    if (player_controller_can_take_damage()) {
+        if (hitbox_x < (int16_t)(boss_x + (BOSS_GRID_COLS * ENEMY_SPRITE_SIZE_PX)) &&
+            (int16_t)(hitbox_x + PLAYER_HITBOX_SIZE) > boss_x &&
+            hitbox_y < (int16_t)(boss_y + (BOSS_GRID_ROWS * ENEMY_SPRITE_SIZE_PX)) &&
+            (int16_t)(hitbox_y + PLAYER_HITBOX_SIZE) > boss_y) {
+            player_controller_apply_damage(PLAYER_CONTACT_DAMAGE);
+            took_damage = true;
+        }
+    }
 
     if (took_damage) {
         score_reset_multiplier();
