@@ -42,11 +42,23 @@ static Projectile projectiles[MAX_PROJECTILES];
 #define PICKUP_VX_Q8 TO_Q8(2)
 #define PICKUP_VY_Q8 (TO_Q8(1) / 4)
 #define NO_PICKUP_FRAME 0xFFu
-#define PICKUP_EMPTY_CHANCE 50u
-#define PICKUP_ENERGY_CHANCE 45u
-#define PICKUP_POWER_CHANCE 3u
+#define PICKUP_SEQUENCE_LENGTH 10u
 
 static uint16_t pickup_rng = 0xA37Fu;
+static uint8_t pickup_sequence_index = 0;
+
+static const uint8_t pickup_sequence[PICKUP_SEQUENCE_LENGTH] = {
+    PICKUP_POWER_FRAME,
+    PICKUP_ENERGY_FRAME,
+    NO_PICKUP_FRAME,
+    PICKUP_SPEED_FRAME,
+    PICKUP_ENERGY_FRAME,
+    PICKUP_ENERGY_FRAME,
+    PICKUP_POWER_FRAME,
+    PICKUP_ENERGY_FRAME,
+    NO_PICKUP_FRAME,
+    PICKUP_ENERGY_FRAME,
+};
 
 static void projectile_deactivate(uint8_t slot);
 
@@ -127,18 +139,9 @@ bool projectile_spawn_explosion(int16_t x, int16_t y)
 
 static uint8_t projectile_roll_pickup_frame(void)
 {
-    uint8_t roll = (uint8_t)(rng_next(&pickup_rng) % 100u);
-
-    if (roll < PICKUP_EMPTY_CHANCE) {
-        return NO_PICKUP_FRAME;
-    }
-    if (roll < (uint8_t)(PICKUP_EMPTY_CHANCE + PICKUP_ENERGY_CHANCE)) {
-        return PICKUP_ENERGY_FRAME;
-    }
-    if (roll < (uint8_t)(PICKUP_EMPTY_CHANCE + PICKUP_ENERGY_CHANCE + PICKUP_POWER_CHANCE)) {
-        return PICKUP_POWER_FRAME;
-    }
-    return PICKUP_SPEED_FRAME;
+    uint8_t frame = pickup_sequence[pickup_sequence_index];
+    pickup_sequence_index = (uint8_t)((pickup_sequence_index + 1u) % PICKUP_SEQUENCE_LENGTH);
+    return frame;
 }
 
 static bool projectile_try_spawn_pickup(int16_t x, int16_t y, uint8_t frame_index)
@@ -310,6 +313,7 @@ static bool projectile_is_offscreen_noncombat(uint8_t slot)
 void projectile_init(void)
 {
     pickup_rng = 0xA37Fu;
+    pickup_sequence_index = 0;
     for (uint8_t i = 0; i < MAX_PROJECTILES; i++) {
         projectile_deactivate(i);
     }

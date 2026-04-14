@@ -92,6 +92,7 @@ void gameplay_update_playing_state(gameplay_runtime_t *state)
             enemy_hide_bonus_icons();
             music_stop();
             state->game_over_timer = GAME_OVER_TIMEOUT_FRAMES;
+            state->game_over_is_victory = false;
             state->game_over_letters_started = false;
             state->game_over_scroll_started = false;
             state->game_over_scroll_delay_timer = 0;

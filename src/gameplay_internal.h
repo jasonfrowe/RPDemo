@@ -15,6 +15,7 @@ typedef enum {
 typedef struct {
     uint16_t game_over_timer;
     uint8_t hud_health_last;
+    bool game_over_is_victory;
     bool game_over_letters_started;
     bool game_over_scroll_started;
     uint16_t game_over_scroll_delay_timer;

@@ -72,6 +72,7 @@ void tile_mode2_set_score(uint32_t score);
 void tile_mode2_set_multiplier(uint8_t multiplier);
 void tile_mode2_set_paused_banner(bool visible);
 void tile_mode2_set_level_banner(uint8_t level, bool visible);
+void tile_mode2_set_end_banner(bool victory);
 void tile_mode2_set_level_complete_banner(bool visible);
 void tile_mode2_set_bonus_continue_prompt(bool visible);
 void tile_mode2_set_health(uint8_t health);

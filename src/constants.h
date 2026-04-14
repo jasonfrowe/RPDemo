@@ -49,7 +49,7 @@
 // Player health and damage tuning
 #define PLAYER_MAX_HEALTH           48
 #define PLAYER_LOW_HEALTH_THRESHOLD 12
-#define PLAYER_BULLET_DAMAGE         0
+#define PLAYER_BULLET_DAMAGE         4
 #define PLAYER_CONTACT_DAMAGE        4
 #define PLAYER_HIT_COOLDOWN_FRAMES 108
 #define PLAYER_HIT_FLASH_FRAMES     96

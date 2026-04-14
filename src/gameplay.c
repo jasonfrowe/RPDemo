@@ -24,6 +24,7 @@
 static gameplay_runtime_t runtime_state = {
     .game_over_timer = 0,
     .hud_health_last = 0xFF,
+    .game_over_is_victory = false,
     .game_over_letters_started = false,
     .game_over_scroll_started = false,
     .game_over_scroll_delay_timer = 0,
@@ -43,6 +44,14 @@ static const char *track_for_level(uint8_t level)
             return "music/RESOURCE.003.vgm";
         case 3:
             return "music/RESOURCE.008.vgm";
+        case 4:
+            return "music/RESOURCE.002.vgm";
+        case 5:
+            return "music/RESOURCE.005.vgm";
+        case 6:
+            return "music/RESOURCE.003.vgm";
+        case 7:
+            return "music/RESOURCE.010.vgm";
         default:
             return "music/RESOURCE.009.vgm";
     }
@@ -139,6 +148,7 @@ void gameplay_reset_to_title_scene(gameplay_runtime_t *state)
     sprite_mode5_show_player();
     music_set_track("music/RESOURCE.001.vgm");
     state->game_over_timer = 0;
+    state->game_over_is_victory = false;
     state->game_over_letters_started = false;
     state->game_over_scroll_started = false;
     state->game_over_scroll_delay_timer = 0;
@@ -173,6 +183,7 @@ static void start_new_run(void)
     tile_mode2_set_level_banner(state->current_level, true);
     state->level_banner_visible = true;
     music_set_track(track_for_level(state->current_level));
+    state->game_over_is_victory = false;
     state->game_over_letters_started = false;
     state->game_over_scroll_started = false;
     state->game_over_scroll_delay_timer = 0;
@@ -207,9 +218,34 @@ static void start_next_level(void)
     tile_mode2_set_level_banner(state->current_level, true);
     state->level_banner_visible = true;
     music_set_track(track_for_level(state->current_level));
+    state->game_over_is_victory = false;
     level_bonus_reset();
     gameplay_clear_bonus_entry_state(state);
     state->player_script = PLAYER_SCRIPT_FROM_BONUS;
+}
+
+static void start_victory_ending(void)
+{
+    gameplay_runtime_t *state = &runtime_state;
+
+    if (game_state_enter_game_over() != GAME_TRANSITION_ENTER_GAME_OVER) {
+        return;
+    }
+
+    gameplay_boss_reset();
+    projectile_init();
+    enemy_init();
+    enemy_hide_bonus_icons();
+    tile_mode2_set_level_complete_banner(false);
+    tile_mode2_set_bonus_continue_prompt(false);
+    state->level_banner_visible = false;
+    state->game_over_timer = GAME_OVER_TIMEOUT_FRAMES;
+    state->game_over_is_victory = true;
+    state->game_over_letters_started = false;
+    state->game_over_scroll_started = false;
+    state->game_over_scroll_delay_timer = 0;
+    level_bonus_reset();
+    gameplay_clear_bonus_entry_state(state);
 }
 
 static void handle_start_transition(game_transition_t transition)
@@ -222,7 +258,11 @@ static void handle_start_transition(game_transition_t transition)
         tile_mode2_set_paused_banner(false);
     } else if (transition == GAME_TRANSITION_START_NEXT_LEVEL) {
         if (level_bonus_is_complete()) {
-            start_next_level();
+            if (runtime_state.current_level >= 7) {
+                start_victory_ending();
+            } else {
+                start_next_level();
+            }
         } else {
             game_state_enter_level_bonus();
         }

@@ -12,7 +12,8 @@ void gameplay_update_game_over_state(gameplay_runtime_t *state)
 {
     player_controller_update();
 
-    if (!state->game_over_letters_started && player_controller_is_death_animation_complete()) {
+    if (!state->game_over_letters_started &&
+        (state->game_over_is_victory || player_controller_is_death_animation_complete())) {
         enemy_start_game_over_animation();
         music_set_track("music/RESOURCE.011.vgm");
         state->game_over_letters_started = true;
@@ -36,6 +37,7 @@ void gameplay_update_game_over_state(gameplay_runtime_t *state)
                     tile_mode2_set_level_banner(state->current_level, false);
                     state->level_banner_visible = false;
                     tile_mode2_set_level_complete_banner(false);
+                    tile_mode2_set_end_banner(state->game_over_is_victory);
                     tile_mode2_set_bonus_continue_prompt(false);
                     tile_mode2_set_health(0);
                     state->game_over_scroll_started = true;

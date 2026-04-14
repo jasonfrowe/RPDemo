@@ -2,12 +2,14 @@
 
 static game_state_t g_state = GAME_STATE_TITLE;
 static bool g_start_armed = false;
+static game_state_t g_paused_from_state = GAME_STATE_PLAYING;
 
 void game_state_init(void)
 {
     g_state = GAME_STATE_TITLE;
     // Require a release before first Start press can trigger game start.
     g_start_armed = false;
+    g_paused_from_state = GAME_STATE_PLAYING;
 }
 
 game_state_t game_state_get(void)
@@ -34,23 +36,20 @@ game_transition_t game_state_handle_start_button(bool start_pressed)
         return GAME_TRANSITION_START_GAME;
     }
 
-    if (g_state == GAME_STATE_PLAYING) {
+    if (g_state == GAME_STATE_PLAYING || g_state == GAME_STATE_BOSS) {
+        g_paused_from_state = g_state;
         g_state = GAME_STATE_PAUSED;
         return GAME_TRANSITION_PAUSE_GAME;
     }
 
     if (g_state == GAME_STATE_PAUSED) {
-        g_state = GAME_STATE_PLAYING;
+        g_state = g_paused_from_state;
         return GAME_TRANSITION_UNPAUSE_GAME;
     }
 
     if (g_state == GAME_STATE_LEVEL_BONUS) {
         g_state = GAME_STATE_PLAYING;
         return GAME_TRANSITION_START_NEXT_LEVEL;
-    }
-
-    if (g_state == GAME_STATE_BOSS) {
-        return GAME_TRANSITION_NONE;
     }
 
     if (g_state == GAME_STATE_GAME_OVER) {
