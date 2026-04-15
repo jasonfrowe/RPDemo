@@ -15,6 +15,8 @@ typedef enum {
 typedef struct {
     uint16_t game_over_timer;
     uint8_t hud_health_last;
+    uint8_t hud_speed_pickups_last;
+    uint8_t hud_power_pickups_last;
     uint8_t extra_lives;
     bool game_over_is_victory;
     bool game_over_letters_started;

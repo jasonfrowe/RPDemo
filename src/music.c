@@ -65,7 +65,9 @@ void music_update(void) {
 
     vgm_update(&g_player, 735u, &track_ended, g_status_line, sizeof(g_status_line));
     if (track_ended) {
-        vgm_close(&g_player);
-        music_start_current();
+        if (!vgm_restart(&g_player)) {
+            vgm_close(&g_player);
+            music_start_current();
+        }
     }
 }

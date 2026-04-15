@@ -358,6 +358,8 @@ void gameplay_boss_update(gameplay_runtime_t *state)
     int16_t hitbox_x;
     int16_t hitbox_y;
     uint8_t player_health;
+    uint8_t speed_pickups;
+    uint8_t power_pickups;
     bool took_damage = false;
     int16_t weakspot_x;
     int16_t weakspot_y;
@@ -464,6 +466,18 @@ void gameplay_boss_update(gameplay_runtime_t *state)
         player_controller_is_low_health()
     );
 
+    speed_pickups = player_controller_get_speed_pickup_count();
+    if (speed_pickups != state->hud_speed_pickups_last) {
+        state->hud_speed_pickups_last = speed_pickups;
+        tile_mode2_set_speed_pickups(speed_pickups);
+    }
+
+    power_pickups = player_controller_get_power_pickup_count();
+    if (power_pickups != state->hud_power_pickups_last) {
+        state->hud_power_pickups_last = power_pickups;
+        tile_mode2_set_power_pickups(power_pickups);
+    }
+
     if (player_controller_is_destroyed()) {
         if (state->extra_lives > 0) {
             if (player_controller_is_death_animation_complete()) {
@@ -473,6 +487,10 @@ void gameplay_boss_update(gameplay_runtime_t *state)
                 state->hud_health_last = player_controller_get_health();
                 tile_mode2_set_health(state->hud_health_last);
                 tile_mode2_update_health_fx(false, false);
+                state->hud_speed_pickups_last = player_controller_get_speed_pickup_count();
+                state->hud_power_pickups_last = player_controller_get_power_pickup_count();
+                tile_mode2_set_speed_pickups(state->hud_speed_pickups_last);
+                tile_mode2_set_power_pickups(state->hud_power_pickups_last);
             }
             return;
         }

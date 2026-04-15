@@ -62,6 +62,14 @@ static uint8_t health_flash_tick = 0;
 #define LIVES_SLOT_0_X 26
 #define LIVES_SLOT_1_X 28
 #define LIVES_MAX_DISPLAY 2
+#define SPEED_PICKUP_TILE_INDEX 254
+#define SPEED_PICKUP_X_START 4
+#define SPEED_PICKUP_Y 1
+#define SPEED_PICKUP_MAX_DISPLAY 4
+#define POWER_PICKUP_TILE_INDEX 255
+#define POWER_PICKUP_X_START 9
+#define POWER_PICKUP_Y 1
+#define POWER_PICKUP_MAX_DISPLAY 4
 #define BONUS_TABLE_X 10
 #define BONUS_TABLE_Y 5
 #define BONUS_TABLE_ROWS 19
@@ -787,6 +795,44 @@ void tile_mode2_set_lives(uint8_t extra_lives)
         LIVES_SLOT_Y,
         (clamped_lives >= 2u) ? LIVES_ICON_TILE_INDEX : 0
     );
+}
+
+void tile_mode2_set_speed_pickups(uint8_t count)
+{
+    uint8_t clamped = count;
+
+    if (clamped > SPEED_PICKUP_MAX_DISPLAY) {
+        clamped = SPEED_PICKUP_MAX_DISPLAY;
+    }
+
+    for (uint8_t i = 0; i < SPEED_PICKUP_MAX_DISPLAY; ++i) {
+        tile_mode2_write_tile(
+            STARFIELD_HUD_DATA,
+            STARFIELD_HUD_WIDTH,
+            (uint8_t)(SPEED_PICKUP_X_START + i),
+            SPEED_PICKUP_Y,
+            (i < clamped) ? SPEED_PICKUP_TILE_INDEX : 0
+        );
+    }
+}
+
+void tile_mode2_set_power_pickups(uint8_t count)
+{
+    uint8_t clamped = count;
+
+    if (clamped > POWER_PICKUP_MAX_DISPLAY) {
+        clamped = POWER_PICKUP_MAX_DISPLAY;
+    }
+
+    for (uint8_t i = 0; i < POWER_PICKUP_MAX_DISPLAY; ++i) {
+        tile_mode2_write_tile(
+            STARFIELD_HUD_DATA,
+            STARFIELD_HUD_WIDTH,
+            (uint8_t)(POWER_PICKUP_X_START + i),
+            POWER_PICKUP_Y,
+            (i < clamped) ? POWER_PICKUP_TILE_INDEX : 0
+        );
+    }
 }
 
 void tile_mode2_update_health_fx(bool damage_flash_active, bool low_health)

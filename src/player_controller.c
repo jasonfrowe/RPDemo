@@ -111,6 +111,22 @@ uint8_t player_controller_get_fire_rate(void)
     return player_fire_rate;
 }
 
+uint8_t player_controller_get_speed_pickup_count(void)
+{
+    if (player_speed_cap <= PLAYER_DEFAULT_SPEED) {
+        return 0;
+    }
+    return (uint8_t)(player_speed_cap - PLAYER_DEFAULT_SPEED);
+}
+
+uint8_t player_controller_get_power_pickup_count(void)
+{
+    if (player_fire_rate >= PLAYER_FIRE_RATE) {
+        return 0;
+    }
+    return (uint8_t)(PLAYER_FIRE_RATE - player_fire_rate);
+}
+
 void player_controller_get_position(int16_t *x, int16_t *y)
 {
     if (x != NULL) {

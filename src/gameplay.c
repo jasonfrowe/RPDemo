@@ -25,6 +25,8 @@
 static gameplay_runtime_t runtime_state = {
     .game_over_timer = 0,
     .hud_health_last = 0xFF,
+    .hud_speed_pickups_last = 0xFF,
+    .hud_power_pickups_last = 0xFF,
     .extra_lives = PLAYER_START_EXTRA_LIVES,
     .game_over_is_victory = false,
     .game_over_letters_started = false,
@@ -146,7 +148,11 @@ void gameplay_reset_to_title_scene(gameplay_runtime_t *state)
     tile_mode2_set_bonus_continue_prompt(false);
     tile_mode2_set_health(PLAYER_MAX_HEALTH);
     tile_mode2_set_lives(0);
+    tile_mode2_set_speed_pickups(0);
+    tile_mode2_set_power_pickups(0);
     state->hud_health_last = PLAYER_MAX_HEALTH;
+    state->hud_speed_pickups_last = 0;
+    state->hud_power_pickups_last = 0;
     tile_mode2_update_health_fx(false, false);
     sprite_mode5_show_player();
     music_set_track("ROM:RESOURCE.001.vgm");
@@ -181,7 +187,11 @@ static void start_new_run(void)
     tile_mode2_set_bonus_continue_prompt(false);
     tile_mode2_set_health(PLAYER_MAX_HEALTH);
     tile_mode2_set_lives(state->extra_lives);
+    tile_mode2_set_speed_pickups(player_controller_get_speed_pickup_count());
+    tile_mode2_set_power_pickups(player_controller_get_power_pickup_count());
     state->hud_health_last = PLAYER_MAX_HEALTH;
+    state->hud_speed_pickups_last = player_controller_get_speed_pickup_count();
+    state->hud_power_pickups_last = player_controller_get_power_pickup_count();
     tile_mode2_update_health_fx(false, false);
     sprite_mode5_show_player();
     tile_mode2_clear_level_bonus();
@@ -218,7 +228,11 @@ static void start_next_level(void)
     tile_mode2_set_bonus_continue_prompt(false);
     tile_mode2_set_health(player_controller_get_health());
     tile_mode2_set_lives(state->extra_lives);
+    tile_mode2_set_speed_pickups(player_controller_get_speed_pickup_count());
+    tile_mode2_set_power_pickups(player_controller_get_power_pickup_count());
     state->hud_health_last = player_controller_get_health();
+    state->hud_speed_pickups_last = player_controller_get_speed_pickup_count();
+    state->hud_power_pickups_last = player_controller_get_power_pickup_count();
     tile_mode2_update_health_fx(false, player_controller_is_low_health());
     sprite_mode5_show_player();
     tile_mode2_clear_level_bonus();
@@ -251,7 +265,11 @@ static void restart_current_level(void)
     tile_mode2_set_bonus_continue_prompt(false);
     tile_mode2_set_health(player_controller_get_health());
     tile_mode2_set_lives(state->extra_lives);
+    tile_mode2_set_speed_pickups(player_controller_get_speed_pickup_count());
+    tile_mode2_set_power_pickups(player_controller_get_power_pickup_count());
     state->hud_health_last = player_controller_get_health();
+    state->hud_speed_pickups_last = player_controller_get_speed_pickup_count();
+    state->hud_power_pickups_last = player_controller_get_power_pickup_count();
     tile_mode2_update_health_fx(false, player_controller_is_low_health());
     sprite_mode5_show_player();
     tile_mode2_clear_level_bonus();
@@ -319,7 +337,11 @@ void gameplay_init(void)
     game_state_init();
     tile_mode2_set_health(player_controller_get_health());
     tile_mode2_set_lives(0);
+    tile_mode2_set_speed_pickups(0);
+    tile_mode2_set_power_pickups(0);
     runtime_state.hud_health_last = player_controller_get_health();
+    runtime_state.hud_speed_pickups_last = 0;
+    runtime_state.hud_power_pickups_last = 0;
 }
 
 void gameplay_frame(bool start_pressed)

@@ -29,5 +29,7 @@ int  player_controller_get_speed(void);
 void player_controller_apply_speed_pickup(void);
 void player_controller_apply_power_pickup(void);
 uint8_t player_controller_get_fire_rate(void);
+uint8_t player_controller_get_speed_pickup_count(void);
+uint8_t player_controller_get_power_pickup_count(void);
 
 #endif // PLAYER_CONTROLLER_H

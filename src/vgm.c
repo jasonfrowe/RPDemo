@@ -113,6 +113,15 @@ bool vgm_open(vgm_player_t *player, const char *path, char *status_line, uint16_
     return true;
 }
 
+bool vgm_restart(vgm_player_t *player)
+{
+    if (player->fd < 0) {
+        return false;
+    }
+
+    return seek_data_start(player);
+}
+
 void vgm_close(vgm_player_t *player) {
     if (player->fd >= 0) {
         close(player->fd);

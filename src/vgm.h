@@ -20,6 +20,7 @@ typedef struct {
 
 bool vgm_open(vgm_player_t *player, const char *path, char *status_line, uint16_t status_size);
 void vgm_close(vgm_player_t *player);
+bool vgm_restart(vgm_player_t *player);
 void vgm_update(vgm_player_t *player,
                 uint32_t sample_budget,
                 bool *track_ended,

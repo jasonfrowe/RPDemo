@@ -79,6 +79,8 @@ void tile_mode2_set_bonus_continue_prompt(bool visible);
 void tile_mode2_set_push_start_prompt(bool visible);
 void tile_mode2_set_health(uint8_t health);
 void tile_mode2_set_lives(uint8_t extra_lives);
+void tile_mode2_set_speed_pickups(uint8_t count);
+void tile_mode2_set_power_pickups(uint8_t count);
 void tile_mode2_update_health_fx(bool damage_flash_active, bool low_health);
 void tile_mode2_set_boss_hud_visible(bool visible);
 void tile_mode2_set_boss_health(uint8_t health);
