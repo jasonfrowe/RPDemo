@@ -57,6 +57,11 @@ static uint8_t health_flash_tick = 0;
 #define BONUS_CONTINUE_TEXT_Y 25
 #define BONUS_CONTINUE_TEXT_LEN 11
 #define HEALTH_FLASH_TOGGLE_FRAMES 3
+#define LIVES_ICON_TILE_INDEX 253
+#define LIVES_SLOT_Y 1
+#define LIVES_SLOT_0_X 26
+#define LIVES_SLOT_1_X 28
+#define LIVES_MAX_DISPLAY 2
 #define BONUS_TABLE_X 10
 #define BONUS_TABLE_Y 5
 #define BONUS_TABLE_ROWS 19
@@ -757,6 +762,31 @@ void tile_mode2_set_health(uint8_t health)
             tile_index
         );
     }
+}
+
+void tile_mode2_set_lives(uint8_t extra_lives)
+{
+    uint8_t clamped_lives = extra_lives;
+
+    if (clamped_lives > LIVES_MAX_DISPLAY) {
+        clamped_lives = LIVES_MAX_DISPLAY;
+    }
+
+    tile_mode2_write_tile(
+        STARFIELD_HUD_DATA,
+        STARFIELD_HUD_WIDTH,
+        LIVES_SLOT_0_X,
+        LIVES_SLOT_Y,
+        (clamped_lives >= 1u) ? LIVES_ICON_TILE_INDEX : 0
+    );
+
+    tile_mode2_write_tile(
+        STARFIELD_HUD_DATA,
+        STARFIELD_HUD_WIDTH,
+        LIVES_SLOT_1_X,
+        LIVES_SLOT_Y,
+        (clamped_lives >= 2u) ? LIVES_ICON_TILE_INDEX : 0
+    );
 }
 
 void tile_mode2_update_health_fx(bool damage_flash_active, bool low_health)

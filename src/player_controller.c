@@ -12,7 +12,10 @@
 // To tune: change PLAYER_DEFAULT_SPEED. Range is PLAYER_SPEED_MIN to PLAYER_SPEED_MAX.
 #define PLAYER_DEFAULT_SPEED  5     // 1.25 px/frame
 #define PLAYER_SPEED_MIN      1     // 0.25 px/frame
-#define PLAYER_SPEED_MAX      10    // 2.50 px/frame
+#define PLAYER_SPEED_MAX      10    // 2.5 px/frame
+#define PLAYER_RESPAWN_INVINCIBLE_FRAMES (3 * 60)
+#define PLAYER_RESPAWN_RISE_SPEED_PX 2
+#define PLAYER_RESPAWN_BLINK_TOGGLE_FRAMES 6
 
 // Internal: convert speed level to Q8 fixed-point (1 level = 0.25 px = 64 Q8 units).
 #define Q8_SHIFT 8
@@ -29,6 +32,10 @@ static uint8_t death_anim_frame = PLAYER_DEATH_FRAME_START;
 static uint8_t death_anim_tick = 0;
 static uint8_t death_anim_hold_tick = 0;
 static bool death_animation_complete = false;
+static bool player_respawning = false;
+static uint16_t respawn_invincible_timer = 0;
+static uint8_t respawn_blink_tick = 0;
+static bool respawn_visible = true;
 
 static int player_speed_cap = PLAYER_DEFAULT_SPEED;
 static bool prev_speed_down = false;
@@ -36,6 +43,11 @@ static bool prev_speed_up = false;
 static uint8_t fire_cooldown = 0;
 static uint8_t player_fire_rate = PLAYER_FIRE_RATE;
 static uint8_t damage_flash_phase = 0;
+
+static int16_t player_start_y(void)
+{
+    return (int16_t)(((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) * 2) / 3);
+}
 
 void player_controller_reset_for_new_run(void)
 {
@@ -51,12 +63,17 @@ void player_controller_reset_for_new_run(void)
     death_anim_tick = 0;
     death_anim_hold_tick = 0;
     death_animation_complete = false;
+    player_respawning = false;
+    respawn_invincible_timer = 0;
+    respawn_blink_tick = 0;
+    respawn_visible = true;
     fire_cooldown = 0;
     player_fire_rate = PLAYER_FIRE_RATE;
     damage_flash_phase = 0;
     prev_speed_down = false;
     prev_speed_up = false;
     sprite_mode5_set_damage_flash(false);
+    sprite_mode5_show_player();
     sprite_mode5_set_frame(0);
     sprite_mode5_set_position((int16_t)(player_x_q8 >> Q8_SHIFT), (int16_t)(player_y_q8 >> Q8_SHIFT));
 }
@@ -130,6 +147,37 @@ void player_controller_reset_damage_state(void)
     damage_flash_timer = 0;
     damage_flash_phase = 0;
     sprite_mode5_set_damage_flash(false);
+}
+
+void player_controller_begin_respawn(void)
+{
+    int16_t start_x = (int16_t)((SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX) / 2);
+    int16_t bottom_y = (int16_t)(SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX);
+
+    player_health = PLAYER_MAX_HEALTH;
+    player_destroyed = false;
+    death_anim_frame = PLAYER_DEATH_FRAME_START;
+    death_anim_tick = 0;
+    death_anim_hold_tick = 0;
+    death_animation_complete = false;
+    player_respawning = true;
+    respawn_invincible_timer = PLAYER_RESPAWN_INVINCIBLE_FRAMES;
+    respawn_blink_tick = 0;
+    respawn_visible = true;
+    hit_cooldown = 0;
+    damage_flash_timer = 0;
+    damage_flash_phase = 0;
+    fire_cooldown = 0;
+    prev_speed_down = false;
+    prev_speed_up = false;
+
+    player_x_q8 = ((int32_t)start_x) << Q8_SHIFT;
+    player_y_q8 = ((int32_t)bottom_y) << Q8_SHIFT;
+
+    sprite_mode5_set_damage_flash(false);
+    sprite_mode5_set_frame(0);
+    sprite_mode5_show_player();
+    sprite_mode5_set_position(start_x, bottom_y);
 }
 
 void player_controller_get_center_position(int16_t *x, int16_t *y)
@@ -209,7 +257,7 @@ bool player_controller_is_death_animation_complete(void)
 
 bool player_controller_can_take_damage(void)
 {
-    return (!player_destroyed && hit_cooldown == 0);
+    return (!player_destroyed && !player_respawning && respawn_invincible_timer == 0 && hit_cooldown == 0);
 }
 
 bool player_controller_is_damage_flash_active(void)
@@ -288,6 +336,51 @@ void player_controller_update(void)
                 death_anim_frame++;
                 sprite_mode5_set_frame(death_anim_frame);
             }
+        }
+        return;
+    }
+
+    if (respawn_invincible_timer > 0) {
+        respawn_invincible_timer--;
+        respawn_blink_tick++;
+
+        if (respawn_blink_tick >= PLAYER_RESPAWN_BLINK_TOGGLE_FRAMES) {
+            respawn_blink_tick = 0;
+            respawn_visible = !respawn_visible;
+            if (respawn_visible) {
+                sprite_mode5_show_player();
+            } else {
+                sprite_mode5_hide_player();
+            }
+        }
+
+        if (respawn_invincible_timer == 0) {
+            respawn_visible = true;
+            sprite_mode5_show_player();
+        }
+    }
+
+    if (player_respawning) {
+        int16_t draw_x = (int16_t)(player_x_q8 >> Q8_SHIFT);
+        int16_t draw_y = (int16_t)(player_y_q8 >> Q8_SHIFT);
+        int16_t target_y = player_start_y();
+
+        if (draw_y > target_y) {
+            draw_y = (int16_t)(draw_y - PLAYER_RESPAWN_RISE_SPEED_PX);
+            if (draw_y < target_y) {
+                draw_y = target_y;
+            }
+            player_y_q8 = ((int32_t)draw_y) << Q8_SHIFT;
+        }
+
+        sprite_mode5_set_frame(0);
+        sprite_mode5_update_engine(false);
+        if (respawn_visible) {
+            sprite_mode5_set_position(draw_x, draw_y);
+        }
+
+        if (draw_y <= target_y) {
+            player_respawning = false;
         }
         return;
     }

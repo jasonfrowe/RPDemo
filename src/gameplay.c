@@ -20,10 +20,12 @@
 #define PLAYER_START_X ((SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX) / 2)
 #define PLAYER_START_Y (((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) * 2) / 3)
 #define BONUS_ENTRY_HOLD_FRAMES 60
+#define PLAYER_START_EXTRA_LIVES 2
 
 static gameplay_runtime_t runtime_state = {
     .game_over_timer = 0,
     .hud_health_last = 0xFF,
+    .extra_lives = PLAYER_START_EXTRA_LIVES,
     .game_over_is_victory = false,
     .game_over_letters_started = false,
     .game_over_scroll_started = false,
@@ -143,6 +145,7 @@ void gameplay_reset_to_title_scene(gameplay_runtime_t *state)
     tile_mode2_set_level_complete_banner(false);
     tile_mode2_set_bonus_continue_prompt(false);
     tile_mode2_set_health(PLAYER_MAX_HEALTH);
+    tile_mode2_set_lives(0);
     state->hud_health_last = PLAYER_MAX_HEALTH;
     tile_mode2_update_health_fx(false, false);
     sprite_mode5_show_player();
@@ -162,6 +165,7 @@ static void start_new_run(void)
     gameplay_runtime_t *state = &runtime_state;
 
     state->current_level = 1;
+    state->extra_lives = PLAYER_START_EXTRA_LIVES;
     gameplay_boss_reset();
     enemy_stop_game_over_animation();
     enemy_hide_bonus_icons();
@@ -176,6 +180,7 @@ static void start_new_run(void)
     tile_mode2_set_level_complete_banner(false);
     tile_mode2_set_bonus_continue_prompt(false);
     tile_mode2_set_health(PLAYER_MAX_HEALTH);
+    tile_mode2_set_lives(state->extra_lives);
     state->hud_health_last = PLAYER_MAX_HEALTH;
     tile_mode2_update_health_fx(false, false);
     sprite_mode5_show_player();
@@ -212,6 +217,7 @@ static void start_next_level(void)
     tile_mode2_set_level_complete_banner(false);
     tile_mode2_set_bonus_continue_prompt(false);
     tile_mode2_set_health(player_controller_get_health());
+    tile_mode2_set_lives(state->extra_lives);
     state->hud_health_last = player_controller_get_health();
     tile_mode2_update_health_fx(false, player_controller_is_low_health());
     sprite_mode5_show_player();
@@ -244,6 +250,7 @@ static void restart_current_level(void)
     tile_mode2_set_push_start_prompt(false);
     tile_mode2_set_bonus_continue_prompt(false);
     tile_mode2_set_health(player_controller_get_health());
+    tile_mode2_set_lives(state->extra_lives);
     state->hud_health_last = player_controller_get_health();
     tile_mode2_update_health_fx(false, player_controller_is_low_health());
     sprite_mode5_show_player();
@@ -311,6 +318,7 @@ void gameplay_init(void)
 {
     game_state_init();
     tile_mode2_set_health(player_controller_get_health());
+    tile_mode2_set_lives(0);
     runtime_state.hud_health_last = player_controller_get_health();
 }
 
