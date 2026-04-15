@@ -287,7 +287,7 @@ If you build and run this code, you should see a blank screen on your Picocomput
 
 ## Adding a Sprite
 
-We are going to use Mode 5 Sprite system for the demo.  It's very flexible and powerful.  We are going to add a 4-bpp (16-colour) sprite with a custom palette and start to get a feel for the XRAM system.   The images folder contains ```Player_4bpp.bin``` which is a 16x16 pixel tile-based Sprite in the 4-bpp format.  We will learn later how to make our own sprites and convert them to the correct format.  
+We are going to use Mode 5 Sprite system for the demo.  It's very flexible and powerful.  We are going to add a 4-bpp (16-color) sprite with a custom palette and start to get a feel for the XRAM system.   The images folder contains ```Player_4bpp.bin``` which is a 16x16 pixel tile-based Sprite in the 4-bpp format.  We will learn later how to make our own sprites and convert them to the correct format.  
 
 We are going to load this sprite into XRAM and then draw it to the screen.  First, we need to add the sprite as an asset in our CMakeLists.txt file.  Update your CMakeLists.txt to add a new rp6502_asset for the sprite, and make sure to include the correct path to the image file.  Your CMakeLists.txt should now look like this:
 
@@ -694,7 +694,7 @@ If you want to learn how the graphics were organized, start there. You can inspe
 
 ## Input System
 
-We going to use ```input.c```, ```input.h```, ```player_controller.c```, and ```player_controller.h``` which have been designed to make handling inputs bit easier and also allow for custom key mappings for any gamepad you want to use.  I strongly recommend reading the Picocomputer documentation.  To get started add ```input.c``` and ```player_controller.c``` to CMakeLists.txt and include the headers in main.c.  
+We are going to use ```input.c```, ```input.h```, ```player_controller.c```, and ```player_controller.h``` which are designed to make handling inputs a bit easier and also allow for custom key mappings for any gamepad you want to use.  I strongly recommend reading the Picocomputer documentation.  To get started add ```input.c``` and ```player_controller.c``` to CMakeLists.txt and include the headers in main.c.  
 
 We need to allocate XRAM to fetch the current state of the inputs.  You can choose any location in XRAM that is not being used by other assets.  In our constants.h file, we have allocated the beginning of XRAM for sprite data, so we can start our input state right after the sprite data.  Update your constants.h file to include the following:
 
@@ -714,7 +714,7 @@ int main(void)
     xreg(0, 0, 0, KEYBOARD_INPUT);
     xreg(0, 0, 2, GAMEPAD_INPUT);
 
-    // Initialise graphics
+    // Initialize graphics
     if (!init_graphics()) {
         puts("Fatal: graphics initialization failed");
         return 1;
@@ -838,7 +838,7 @@ int main(void)
     xregn(0, 0, 0, 1, KEYBOARD_INPUT);
     xregn(0, 0, 2, 1, GAMEPAD_INPUT);
 
-    // Initialise graphics
+    // Initialize graphics
     if (!init_graphics()) {
         puts("Fatal: graphics initialization failed");
         return 1;
@@ -995,10 +995,9 @@ extern unsigned TILE_HUD_CONFIG; // Address in XRAM where tile HUD config is sto
 
 #endif // CONSTANTS_H
 ```
+Notice how we have defined the XRAM layout for all of our assets, including the sprite data, tilemap data, and palette data. This allows us to easily keep track of where everything is in memory and avoid any conflicts. You may notice that our player sprite is actually 3 frames of animation (idle, left, right) which is why we have allocated 384 bytes for the player sprite data (3 frames * 128 bytes per frame = 384 bytes). We will show how to update the sprite data in XRAM to animate the player in a later section. We have also defined some constants for the screen dimensions and the size of our sprite and tilemaps.
 
-Notice how we have defined the XRAM layout for all of our assets, including the sprite data, tilemap data, and palette data.  This allows us to easily keep track of where everything is in memory and avoid any conflicts.  You may notice that our player sprite is actual 3 frames of animation (idle, left, right) which is why we have allocated 384 bytes for the player sprite data (3 frames * 128 bytes per frame = 384 bytes).  We will show how to update the sprite data in XRAM to animate the player in a later section.  We have also defined some constants for the screen dimensions and the size of our sprite and tilemaps.  
-
-Use the spreadsheet to keep track of your XRAM layout and do the hex math for you.  This will help you avoid mistakes and make it easier to manage your assets as your game grows in complexity.  Next we update CMakeLists.txt based on the output of the spreadsheet to include the new source files:
+Use the spreadsheet to keep track of your XRAM layout and do the hex math for you. This will help you avoid mistakes and make it easier to manage your assets as your game grows in complexity. Next we update CMakeLists.txt based on the output of the spreadsheet to include the new source files:
 
 ```cmake
 rp6502_asset(RPStarHopper 0x10000 images/Player_4bpp.bin)
@@ -1014,7 +1013,7 @@ If we look back at our main loop, we are calling ```tile_mode2_update_scroll();`
 
 ## Music
 
-The Picocomputer has a built in OPL2 emulator which is very powerful and can create a wide range of sounds and music.  You can use the OPL2 to create music for your game, and you can also use it to create sound effects.  We are going to use VGM music files for our game, which is a common format for chiptune music.  You can find a large library of VGM music files online, or you can create your own using a tracker software like Furnace.   The VGM is streamed from the disk, so you can have long music tracks without taking up valuable XRAM space. 
+The Picocomputer has a built-in OPL2 emulator which is very powerful and can create a wide range of sounds and music. You can use the OPL2 to create music for your game, and you can also use it to create sound effects. We are going to use VGM music files for our game, which is a common format for chiptune music. You can find a large library of VGM music files online, or you can create your own using a tracker software like Furnace. The VGM is streamed from the disk, so you can have long music tracks without taking up valuable XRAM space.
 
 The key files are ```music.c```, ```opl.c```, ```vgm.c``` and their corresponding header files.  You can add these to your CMakeLists.txt and include the headers in main.c.  The music system will read the VGM file from the disk and stream the OPL commands to the sound chip in real time. VGM tracks are stored as named ROM assets (e.g. `RESOURCE.001.vgm`) and opened at runtime via `open("ROM:RESOURCE.001.vgm", O_RDONLY)`. 
 
@@ -2207,10 +2206,3 @@ Both paths fully reset player, enemies, projectiles, score, HUD health, and rest
 #### Player Autopilot Position Tuning
 
 The bonus screen waypoint is set to X=240 (instead of right edge) to ensure the player sprite stays fully visible during the bonus phase without clipping the right screen edge.
-
-
-
-
-
-
-
