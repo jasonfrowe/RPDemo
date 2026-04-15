@@ -40,6 +40,13 @@
 #define BOSS_HIT_FLASH_FRAMES 12
 #define BOSS_WAVE_INITIAL_DELAY_FRAMES 180
 #define BOSS_WAVE_INTERVAL_FRAMES 420
+// Boss 6 (SIX): Rapid attack cadence
+#define BOSS_VARIANT_SIX_ATTACK_CYCLE_FRAMES 120
+#define BOSS_VARIANT_SIX_ATTACK_WINDOW_FRAMES 54
+#define BOSS_VARIANT_SIX_ATTACK_FIRE_INTERVAL_FRAMES 3
+#define BOSS_VARIANT_SIX_NORMAL_FIRE_INTERVAL_FRAMES 12
+// Boss 7 (SEVEN): Continuous wave spawning
+#define BOSS_VARIANT_SEVEN_WAVE_INTERVAL_FRAMES 0
 #define BOSS_WAVE_SPAWN_COUNT (ENEMY_WAVE_SIZE)
 #define BOSS_WAVE_INTER_SPAWN_FRAMES 12
 #define BOSS_WAVE_ASTEROID_COUNT 2
@@ -101,6 +108,7 @@ static uint8_t boss_frame_set = BOSS_FRAME_SET_A_BASE;
 static uint16_t boss_attack_cycle_timer = 0;
 static uint8_t boss_attack_fire_timer = 0;
 static uint8_t boss_attack_volleys_fired = 0;
+static uint8_t boss_variant_six_normal_fire_timer = 0;
 static uint8_t boss_health = BOSS_MAX_HEALTH;
 static uint32_t boss_fight_timer = 0;
 static uint8_t boss_hit_flash_timer = 0;
@@ -257,6 +265,16 @@ static void boss_fire_dual_projectiles(void)
     projectile_fire_enemy(right_x, spawn_y, BOSS_PROJECTILE_VX_Q8, BOSS_PROJECTILE_VY_Q8, BOSS_PROJECTILE_RIGHT_FRAME);
 }
 
+static void boss_fire_center_projectile(void)
+{
+    int16_t boss_width = (int16_t)(BOSS_GRID_COLS * ENEMY_SPRITE_SIZE_PX);
+    int16_t boss_height = (int16_t)(BOSS_GRID_ROWS * ENEMY_SPRITE_SIZE_PX);
+    int16_t center_x = (int16_t)(boss_x + (boss_width / 2));
+    int16_t spawn_y = (int16_t)(boss_y + boss_height);
+
+    projectile_fire_enemy(center_x, spawn_y, BOSS_PROJECTILE_VX_Q8, BOSS_PROJECTILE_VY_Q8, ENEMY_PROJECTILE_FRAME);
+}
+
 void gameplay_boss_begin(gameplay_runtime_t *state)
 {
     int16_t boss_height = (int16_t)(BOSS_GRID_ROWS * ENEMY_SPRITE_SIZE_PX);
@@ -320,6 +338,7 @@ void gameplay_boss_begin(gameplay_runtime_t *state)
     boss_attack_cycle_timer = 0;
     boss_attack_fire_timer = 0;
     boss_attack_volleys_fired = 0;
+    boss_variant_six_normal_fire_timer = 0;
     boss_health = BOSS_MAX_HEALTH;
     boss_fight_timer = 0;
     boss_hit_flash_timer = 0;
@@ -523,7 +542,35 @@ void gameplay_boss_update(gameplay_runtime_t *state)
         int16_t boss_width = (int16_t)(BOSS_GRID_COLS * ENEMY_SPRITE_SIZE_PX);
         int16_t boss_height = (int16_t)(BOSS_GRID_ROWS * ENEMY_SPRITE_SIZE_PX);
 
-        if (boss_wave_dive_phase == BOSS_WAVE_DIVE_PHASE_EXIT_TOP) {
+        if (boss_variant == BOSS_VARIANT_FIVE) {
+            if (boss_wave_dive_phase == BOSS_WAVE_DIVE_PHASE_EXIT_TOP) {
+                boss_y = (int16_t)(boss_y + BOSS_WAVE_DIVE_EXIT_SPEED_PX);
+                if (boss_y >= (int16_t)(SCREEN_HEIGHT + boss_height)) {
+                    int16_t player_center_x = (int16_t)(player_x + (PLAYER_SPRITE_SIZE_PX / 2));
+                    int16_t target_x = (int16_t)(player_center_x - (boss_width / 2));
+                    int16_t min_x = BOSS_ARENA_MARGIN_X;
+                    int16_t max_x = (int16_t)(SCREEN_WIDTH - boss_width - BOSS_ARENA_MARGIN_X);
+
+                    if (target_x < min_x) {
+                        target_x = min_x;
+                    } else if (target_x > max_x) {
+                        target_x = max_x;
+                    }
+
+                    boss_x = target_x;
+                    boss_y = (int16_t)(-boss_height - BOSS_WAVE_DIVE_UNDER_PLAYER_OFFSET_PX);
+                    boss_wave_dive_phase = BOSS_WAVE_DIVE_PHASE_RISE_FROM_BOTTOM;
+                }
+            } else {
+                boss_y = (int16_t)(boss_y + BOSS_WAVE_DIVE_RISE_SPEED_PX);
+                if (boss_y >= (int16_t)(SCREEN_HEIGHT + BOSS_WAVE_DIVE_UNDER_PLAYER_OFFSET_PX)) {
+                    boss_y = BOSS_ARENA_TOP_Y;
+                    boss_wave_dive_active = false;
+                    boss_wave_dive_phase = BOSS_WAVE_DIVE_PHASE_EXIT_TOP;
+                    boss_pivot_index = 0;
+                }
+            }
+        } else if (boss_wave_dive_phase == BOSS_WAVE_DIVE_PHASE_EXIT_TOP) {
             boss_y = (int16_t)(boss_y - BOSS_WAVE_DIVE_EXIT_SPEED_PX);
             if (boss_y <= (int16_t)(-boss_height)) {
                 int16_t player_center_x = (int16_t)(player_x + (PLAYER_SPRITE_SIZE_PX / 2));
@@ -634,8 +681,25 @@ void gameplay_boss_update(gameplay_runtime_t *state)
     }
 
     if (!boss_entering && !boss_wave_dive_active && !boss_wave_slide_active) {
+        uint16_t cycle_frames = BOSS_ATTACK_CYCLE_FRAMES;
+        uint16_t window_frames = BOSS_ATTACK_WINDOW_FRAMES;
+        uint8_t fire_interval = BOSS_ATTACK_FIRE_INTERVAL_FRAMES;
+        
+        if (boss_variant == BOSS_VARIANT_SIX) {
+            cycle_frames = BOSS_VARIANT_SIX_ATTACK_CYCLE_FRAMES;
+            window_frames = BOSS_VARIANT_SIX_ATTACK_WINDOW_FRAMES;
+            fire_interval = BOSS_VARIANT_SIX_ATTACK_FIRE_INTERVAL_FRAMES;
+
+            if (boss_variant_six_normal_fire_timer > 0) {
+                boss_variant_six_normal_fire_timer--;
+            } else {
+                boss_fire_center_projectile();
+                boss_variant_six_normal_fire_timer = BOSS_VARIANT_SIX_NORMAL_FIRE_INTERVAL_FRAMES;
+            }
+        }
+        
         boss_attack_cycle_timer = (uint16_t)(boss_attack_cycle_timer + 1);
-        if (boss_attack_cycle_timer >= BOSS_ATTACK_CYCLE_FRAMES) {
+        if (boss_attack_cycle_timer >= cycle_frames) {
             boss_attack_cycle_timer = 0;
         }
 
@@ -644,7 +708,7 @@ void gameplay_boss_update(gameplay_runtime_t *state)
             boss_attack_volleys_fired = 0;
         }
 
-        if (boss_attack_cycle_timer < BOSS_ATTACK_WINDOW_FRAMES) {
+        if (boss_attack_cycle_timer < window_frames) {
             boss_frame_set = boss_frame_set_attack_base;
             if (boss_attack_fire_timer > 0) {
                 boss_attack_fire_timer--;
@@ -661,7 +725,7 @@ void gameplay_boss_update(gameplay_runtime_t *state)
                      player_center_x <= (int16_t)(boss_center_x + BOSS_SHOT_ALIGN_TOLERANCE_PX))) {
                     boss_fire_dual_projectiles();
                     boss_attack_volleys_fired++;
-                    boss_attack_fire_timer = BOSS_ATTACK_FIRE_INTERVAL_FRAMES;
+                    boss_attack_fire_timer = fire_interval;
                 }
             }
         } else {
@@ -679,6 +743,7 @@ void gameplay_boss_update(gameplay_runtime_t *state)
     } else {
         boss_attack_fire_timer = 0;
         boss_attack_cycle_timer = 0;
+        boss_variant_six_normal_fire_timer = 0;
         boss_frame_set = boss_frame_set_a_base;
     }
 
@@ -726,6 +791,7 @@ void gameplay_boss_update(gameplay_runtime_t *state)
         boss_attack_cycle_timer = 0;
         boss_attack_fire_timer = 0;
         boss_attack_volleys_fired = 0;
+        boss_variant_six_normal_fire_timer = 0;
         boss_wave_dive_active = false;
         boss_wave_dive_phase = BOSS_WAVE_DIVE_PHASE_EXIT_TOP;
         boss_wave_slide_active = false;
@@ -745,6 +811,7 @@ void gameplay_boss_update(gameplay_runtime_t *state)
         boss_attack_cycle_timer = 0;
         boss_attack_fire_timer = 0;
         boss_attack_volleys_fired = 0;
+        boss_variant_six_normal_fire_timer = 0;
         boss_wave_dive_active = false;
         boss_wave_slide_active = false;
         projectile_init();
@@ -777,6 +844,9 @@ void gameplay_boss_update(gameplay_runtime_t *state)
                 } else if (boss_variant == BOSS_VARIANT_THREE) {
                     boss_wave_slide_active = true;
                     boss_wave_slide_phase = BOSS_WAVE_SLIDE_PHASE_SINK_TO_BOTTOM;
+                } else if (boss_variant == BOSS_VARIANT_FIVE) {
+                    boss_wave_dive_active = true;
+                    boss_wave_dive_phase = BOSS_WAVE_DIVE_PHASE_EXIT_TOP;
                 }
                 boss_wave_active = true;
             }
@@ -789,7 +859,11 @@ void gameplay_boss_update(gameplay_runtime_t *state)
 
                 if (boss_wave_spawned >= BOSS_WAVE_SPAWN_COUNT) {
                     boss_wave_active = false;
-                    boss_wave_timer = BOSS_WAVE_INTERVAL_FRAMES;
+                    if (boss_variant == BOSS_VARIANT_SEVEN) {
+                        boss_wave_timer = BOSS_VARIANT_SEVEN_WAVE_INTERVAL_FRAMES;
+                    } else {
+                        boss_wave_timer = BOSS_WAVE_INTERVAL_FRAMES;
+                    }
                 } else {
                     boss_wave_inter_spawn_timer = BOSS_WAVE_INTER_SPAWN_FRAMES;
                 }
@@ -810,6 +884,7 @@ void gameplay_boss_reset(void)
     boss_attack_cycle_timer = 0;
     boss_attack_fire_timer = 0;
     boss_attack_volleys_fired = 0;
+    boss_variant_six_normal_fire_timer = 0;
     boss_health = BOSS_MAX_HEALTH;
     boss_fight_timer = 0;
     boss_hit_flash_timer = 0;
