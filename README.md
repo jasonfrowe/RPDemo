@@ -53,6 +53,7 @@ Your ship has 48 HP. The health bar at the top right turns red when HP drops bel
 - [Input System](#input-system)
 - [Tilemaps and Backgrounds](#tilemaps-and-backgrounds)
 - [Music](#music)
+- [Making Music in Furnace (OPL2/YM3812 -> VGM)](#making-music-in-furnace-opl2ym3812---vgm)
 - [Animations and Palette Swapping](#animations-and-palette-swapping)
 - [Adding Bullets](#adding-bullets)
 - [Gameplay Loop](#gameplay-loop)
@@ -1020,6 +1021,30 @@ If we look back at our main loop, we are calling ```tile_mode2_update_scroll();`
 ## Music
 
 The Picocomputer has a built-in OPL2 emulator which is very powerful and can create a wide range of sounds and music. You can use the OPL2 to create music for your game, and you can also use it to create sound effects. We are going to use VGM music files for our game, which is a common format for chiptune music. You can find a large library of VGM music files online, or you can create your own using a tracker software like Furnace. The VGM is streamed from the disk, so you can have long music tracks without taking up valuable XRAM space.
+
+### Making Music in Furnace (OPL2/YM3812 -> VGM)
+
+For this project, compose directly for **YM3812 (OPL2)** in Furnace, then export as **VGM**.
+
+Recommended workflow:
+
+1. Start a new song in Furnace and set the target sound chip to **Yamaha YM3812 (OPL2)**.
+2. Build your instruments and patterns with OPL2 in mind (9 FM channels, classic OPL2 timbre).
+3. Set tempo/speed and loop points in Furnace so your stage music loops cleanly.
+4. Export to **.vgm** (not .vgz) and test the result in-game.
+
+Practical notes:
+
+- Keep the source module file (`.fur`) in your project for future edits.
+- Export each track as `.vgm` for runtime playback.
+- If you receive `.vgz` files, unzip them first; the game player expects raw `.vgm`.
+- Prefer OPL2-only content when authoring so playback matches the target hardware path.
+
+Suggested asset flow:
+
+- Author and save: `music/MyTrack.fur`
+- Export: `music/MyTrack.vgm`
+- Add as ROM asset in CMake with a `RESOURCE.###.vgm` name for runtime loading.
 
 The key files are ```music.c```, ```opl.c```, ```vgm.c``` and their corresponding header files.  You can add these to your CMakeLists.txt and include the headers in main.c.  The music system will read the VGM file from the disk and stream the OPL commands to the sound chip in real time. VGM tracks are stored as named ROM assets (e.g. `RESOURCE.001.vgm`) and opened at runtime via `open("ROM:RESOURCE.001.vgm", O_RDONLY)`. 
 
