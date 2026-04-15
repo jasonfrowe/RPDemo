@@ -485,7 +485,7 @@ int main(void)
     return 0;
 }
 ```
-At this point, if you build and run the code, you should see your player sprite displayed in the center of the screen!  Congratulations, you have successfully loaded a sprite into XRAM and drawn it to the screen using Mode 5!  In the next section, we will start adding some interactivity and movement to our sprite.
+At this point, if you build and run the code, you should see your player sprite displayed in the center of the screen!  Congratulations, you have successfully loaded a sprite into XRAM and drawn it to the screen using Mode 5!  In the next section we will learn how to convert PNGs and then adding some interactivity and movement to our sprite.
 
 ![First Milestone](Screenshots/Screenshot_001.png)
 
@@ -518,13 +518,17 @@ Example commands used in this project:
 
 ```bash
 # Player sprite sheet (16x16 frames in a horizontal strip)
-python3 ./tools/convert_sprite.py Sprites/Player.png --mode tile --bpp 4 --out-dir images --extract-palette
+python3 ./tools/convert_sprite.py --bpp 4 --mode tile --extract-palette Sprites/Player.png 
 
 # Enemy sprite sheet
-python3 ./tools/convert_sprite.py Sprites/Enemies.png --mode tile --bpp 4 --out-dir images --extract-palette
+python3 ./tools/convert_sprite.py --bpp 4 --mode tile --extract-palette Sprites/Enemies.png
 
 # Projectile/asteroid sheet
-python3 ./tools/convert_sprite.py Sprites/Projectiles.png --mode tile --bpp 4 --out-dir images --extract-palette
+python3 ./tools/convert_sprite.py --bpp 4 --mode tile --extract-palette Sprites/Projectiles.png
+
+# Tile set (full image treated as a bitmap, not split into frames)
+python3 ./tools/convert_sprite.py --bpp 4 --mode tile --extract-palette Sprites/StarFields_tiles.png
+
 ```
 
 Output naming convention:
@@ -533,6 +537,8 @@ Output naming convention:
 - Palette binary/header (if requested): `<name>_<bpp>bpp_palette.bin` and `<name>_<bpp>bpp_palette.h`
 
 For this repo, generated binaries are copied/renamed into the `images/` asset filenames referenced by `rp6502_asset(...)` entries in `CMakeLists.txt`.
+
+If the BPP is not specified, the script will auto-detect based on the image mode and color usage, but may not be dependable.  Additionally, if the BPP is different that the input PNG the script will attempt to requantize the palette to match the requested BBP, which may lead to unexpected color changes.  For best results, create your source PNGs in the target color depth (for example, Indexed Color mode with 16 colors for 4bpp) and use the `--bpp` flag to explicitly specify the output format.
 
 ## Creating Graphics in Aseprite
 
