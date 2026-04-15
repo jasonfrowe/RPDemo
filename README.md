@@ -1,6 +1,6 @@
 # RP6502 Game Demo for LLVM-MOS
 
-![GamePlay](Screenshots/Screenshot_005.png)
+![TitleScreen](Screenshots/Star_Hopper_Final.gif)
 
 ## Star Hopper — How to Play
 
