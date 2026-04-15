@@ -10,7 +10,7 @@
 
 static vgm_player_t g_player;
 static char g_status_line[64];
-static const char *k_music_path = "music/RESOURCE.001.vgm";
+static const char *k_music_path = "ROM:RESOURCE.001.vgm";
 
 static bool music_start_current(void) {
     opl_init();

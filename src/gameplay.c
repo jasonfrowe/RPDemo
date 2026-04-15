@@ -39,21 +39,21 @@ static const char *track_for_level(uint8_t level)
 {
     switch (level) {
         case 1:
-            return "music/RESOURCE.005.vgm";
+            return "ROM:RESOURCE.005.vgm";
         case 2:
-            return "music/RESOURCE.003.vgm";
+            return "ROM:RESOURCE.003.vgm";
         case 3:
-            return "music/RESOURCE.008.vgm";
+            return "ROM:RESOURCE.008.vgm";
         case 4:
-            return "music/RESOURCE.002.vgm";
+            return "ROM:RESOURCE.002.vgm";
         case 5:
-            return "music/RESOURCE.005.vgm";
+            return "ROM:RESOURCE.005.vgm";
         case 6:
-            return "music/RESOURCE.003.vgm";
+            return "ROM:RESOURCE.003.vgm";
         case 7:
-            return "music/RESOURCE.010.vgm";
+            return "ROM:RESOURCE.010.vgm";
         default:
-            return "music/RESOURCE.009.vgm";
+            return "ROM:RESOURCE.009.vgm";
     }
 }
 
@@ -146,7 +146,7 @@ void gameplay_reset_to_title_scene(gameplay_runtime_t *state)
     state->hud_health_last = PLAYER_MAX_HEALTH;
     tile_mode2_update_health_fx(false, false);
     sprite_mode5_show_player();
-    music_set_track("music/RESOURCE.001.vgm");
+    music_set_track("ROM:RESOURCE.001.vgm");
     state->game_over_timer = 0;
     state->game_over_is_victory = false;
     state->game_over_letters_started = false;

@@ -15,7 +15,7 @@ void gameplay_update_game_over_state(gameplay_runtime_t *state)
     if (!state->game_over_letters_started &&
         (state->game_over_is_victory || player_controller_is_death_animation_complete())) {
         enemy_start_game_over_animation();
-        music_set_track("music/RESOURCE.011.vgm");
+        music_set_track("ROM:RESOURCE.011.vgm");
         state->game_over_letters_started = true;
     }
 
