@@ -1,20 +1,143 @@
 # RP6502 Game Demo for LLVM-MOS
 
+## Star Hopper — How to Play
+
+Star Hopper is a vertical shoot-em-up for the Picocomputer (RP6502). Fight through 7 levels of enemy waves, defeat a boss at the end of each level, and survive to reach the YOU WIN screen.
+
+### Controls
+
+| Action | Gamepad |
+|---|---|
+| Move | D-Pad or Left Stick |
+| Fire | X |
+| Pause | Start |
+
+### Enemies and Scoring
+
+There are 7 enemy types, each worth more points than the last (10, 15, 20 … ). Destroying enemies without taking damage builds your **score multiplier** (1× up to 5×). Taking a hit resets the multiplier to 1×. 
+
+After clearing a level, a **bonus screen** tallies your kills per enemy type and awards bonus points scaled by the level number.
+
+### Boss Fights
+
+Each level ends with a boss encounter. The boss health bar appears at the bottom of the screen (green when healthy, red when low). Shoot enemy ships that fly in during the boss phase to keep the wave count down — once enough are cleared the boss becomes vulnerable.
+
+You have **4 minutes** to defeat the boss. If time runs out, the boss retreats and the level is marked **LEVEL FAILED**. Press Start to retry the same level.
+
+### Asteroids and Power-Ups
+
+Destroying asteroids can reveal power-up capsules. Pickups follow a fixed repeating sequence across the whole run:
+
+| Icon | Pick-Up | Effect |
+|---|---|---|
+| **P** | Power | Increases fire rate (faster shots, down to a minimum cooldown) |
+| **E** | Energy | Restores 8 HP |
+| **S** | Speed | Raises your maximum movement speed |
+
+
+### Health
+
+Your ship has 48 HP. The health bar at the top right turns red when HP drops below 12. You have a brief invincibility window after each hit. Reaching 0 HP triggers a game-over.
+
+---
+
 ## Table of Contents
 - [Introduction](#introduction)
+- [Platform Concepts](#platform-concepts)
 - [Getting Started](#getting-started)
 - [Setting up Graphics](#setting-up-graphics)
 - [Adding a Sprite](#adding-a-sprite)
 - [Converting PNG Assets](#converting-png-assets)
+- [Creating Graphics in Aseprite](#creating-graphics-in-aseprite)
 - [Input System](#input-system)
 - [Tilemaps and Backgrounds](#tilemaps-and-backgrounds)
 - [Music](#music)
+- [Animations and Palette Swapping](#animations-and-palette-swapping)
 - [Adding Bullets](#adding-bullets)
 - [Gameplay Loop](#gameplay-loop)
+- [Enemies and Collision Detection](#enemies-and-collision-detection)
 
 ## Introduction
 
-This is a demo game for the RP6502, built with the LLVM-MOS toolchain.  The game is a simple shoot-em-up where you control a spaceship and shoot down incoming asteroids.  The game features a title screen, a parallax scrolling starfield background, and a player sprite that can move around the screen and shoot projectiles.  This demo is designed to showcase the capabilities of the RP6502 and provide a starting point for developers who want to create their own games for this platform.  The game is built using C and the LLVM-MOS SDK, and it runs on the Picocomputer, which is a modern take on the classic 6502-based home computers of the 1980s.  The Picocomputer features a custom operating system, a powerful graphics system, and support for a wide range of input devices, making it an ideal platform for retro-style games.
+This is a complete shoot-em-up (**Star Hopper**) built for the Picocomputer (RP6502) using the LLVM-MOS C toolchain. The game was written incrementally, and this README follows the same steps — you can read the code and explanations side by side and build your own game the same way.
+
+The Picocomputer is built around a real WDC 65C02 CPU. Programming it feels like classic 8-bit development, but the surrounding hardware — VGA, OPL2 audio, gamepads, WiFi — is all modern and fully open source. Before jumping into code, it helps to understand a few concepts that are unique to this platform.
+
+## Platform Concepts
+
+Understanding these ideas first will make every later section much easier to follow.
+
+### System RAM and XRAM
+
+The 6502 sees its normal 64 KB of system RAM (`0x0000–0xFFFF`). This is where program code, the stack, and variables live. The RP6502 also has a second 64 KB called **Extended RAM (XRAM)**. XRAM is *not* directly addressable by the 6502 — there is no `LDA` or `STA` for it. Instead, the RIA chip provides two portals — `ADDR0/RW0` and `ADDR1/RW1` at hardware registers `0xFFE4–0xFFEB` — that let you read and write XRAM one byte at a time with auto-incrementing addresses. The LLVM-MOS SDK wraps this in convenient macros:
+
+```c
+xram0_struct_set(ptr, vga_mode5_sprite_t, x_pos_px, 120); // write one struct field into XRAM
+```
+
+### XRAM is the VGA System's Memory
+
+The most important concept: **the VGA module reads XRAM directly and continuously.** You do not call a "draw sprite at X, Y" function each frame. Instead, you write a sprite's configuration (position, frame pointer, palette pointer) into a small struct in XRAM once, and the VGA hardware renders it automatically on every frame — until you change it.
+
+To move a sprite, you write two new 16-bit values into XRAM. There is no draw call. This is what makes smooth 60 FPS animation possible even on a slow 6502.
+
+### Three Planes, Fill + Sprite Layers
+
+The VGA system has three numbered planes (0, 1, 2). Each plane has two independent layers:
+- A **fill layer** — a tile map, bitmap, or console that covers the plane background.
+- A **sprite layer** — a pool of hardware sprites drawn over the fill.
+
+Different scanline ranges of the same plane can use different modes. This is how the HUD occupies just the top 24 scanlines of plane 2, while the gameplay tiles use the remaining scanlines.
+
+This demo's plane layout:
+
+| Plane | Fill layer | Sprite layer |
+|---|---|---|
+| 0 | Background star tiles (scanlines 24–239) |  Projectile sprites (full screen) |
+| 1 | Foreground star tiles (scanlines 24–239) | Enemy sprites (scanlines 24–239) |
+| 2 | HUD tile map (scanlines 0–23) | Player |
+
+### Canvas and Vsync
+
+`xreg_vga_canvas(1)` selects a canvas resolution. This demo uses canvas `1` (320×240, 4:3). Available options:
+- `0` — 80-column console
+- `1` — 320×240 (4:3)
+- `2` — 320×180 (16:9)
+- `3` — 640×480 (4:3)
+- `4` — 640×360 (16:9)
+
+The register `RIA.vsync` at address `0xFFE3` increments once per frame (~60 Hz) when a VGA module is connected. Your game loop compares it against a saved value to know when a new frame has started:
+
+```c
+if (RIA.vsync == vsync_last) continue; // same frame — spin
+vsync_last = RIA.vsync;               // new frame — run game logic
+```
+
+### ROM Assets and the XRAM Address Offset
+
+In `CMakeLists.txt`, XRAM assets are given load addresses starting at `0x10000`:
+
+```cmake
+rp6502_asset(RPStarHopper 0x10000 images/Player_4bpp.bin)
+```
+
+Within your C code, XRAM is addressed `0x0000–0xFFFF`. The `0x10000` prefix in CMake is a ROM packaging convention: the ROM loader uses addresses `0x10000–0x1FFFF` to mean "load this into XRAM". Your `ADDR0` portal and all XRAM struct pointers always use plain 16-bit XRAM addresses. This is why `constants.h` defines `PLAYER_DATA = 0x0000` even though CMakeLists.txt says `0x10000`.
+
+### Configuring Video Modes with XREG
+
+`xreg_vga_mode(mode, options, config_addr, ...)` installs a video mode for a range of scanlines. It tells the VGA: "use mode X, reading configuration from XRAM address Y, on plane Z, for scanlines BEGIN through END." This is only called once at startup — not every frame.
+
+The `options` byte is a compact bitfield. For **Mode 5** (paletted sprites):
+- **bits\[5:3\]** — sprite size: `000`=8×8, `001`=16×16, `010`=32×32 …
+- **bits\[2:0\]** — color depth: `000`=1bpp, `001`=2bpp, `010`=4bpp, `011`=8bpp
+
+So `0x0A` (`0b00001010`) means **16×16 sprites, 4bpp**, and `0x02` (`0b00000010`) means **8×8 sprites, 4bpp**.
+
+For **Mode 2** (tile maps):
+- **bit\[3\]** — tile size: `0`=8×8, `1`=16×16
+- **bits\[2:0\]** — color depth (same table as above)
+
+So `0x02` means **8×8 tiles, 4bpp**. See the [VGA documentation](https://picocomputer.github.io/vga.html) for the full reference.
 
 ## Getting Started
 
@@ -345,6 +468,162 @@ Output naming convention:
 
 For this repo, generated binaries are copied/renamed into the `images/` asset filenames referenced by `rp6502_asset(...)` entries in `CMakeLists.txt`.
 
+## Creating Graphics in Aseprite
+
+Aseprite is a very good fit for RP6502 graphics work because the Picocomputer's tile and sprite modes are fundamentally palette-based. If you build your art as indexed-color pixel art from the start, the exported data maps cleanly into Mode 2 tiles and Mode 5 sprites.
+
+### Why 4bpp is the sweet spot
+
+For this project, **4bpp** has been the practical sweet spot:
+- `4bpp` means 16 colors per asset palette.
+- Files are half the size of `8bpp` assets and one quarter the size of `16bpp` assets.
+- Smaller files use less XRAM, make ROMs smaller, and reduce the amount of data that has to be copied into XRAM.
+- On RP6502, that also means less PIX/XRAM traffic whenever you stream or update pixel data.
+
+For the same image dimensions, memory scales directly with bits per pixel:
+
+| Asset type | 4bpp | 8bpp | 16bpp |
+|---|---:|---:|---:|
+| One 8x8 tile | 32 bytes | 64 bytes | 128 bytes |
+| One 8x8 projectile frame | 32 bytes | 64 bytes | 128 bytes |
+| One 16x16 sprite frame | 128 bytes | 256 bytes | 512 bytes |
+
+Using this repo's actual art assets, the numbers look like this:
+
+| Asset | Current size at 4bpp | Equivalent at 8bpp | Equivalent at 16bpp |
+|---|---:|---:|---:|
+| Player sprite sheet (`6` frames, `16x16`) | 768 bytes | 1536 bytes | 3072 bytes |
+| Tile set (`256` tiles, `8x8`) | 8192 bytes | 16384 bytes | 32768 bytes |
+| Projectile sheet (`13` frames, `8x8`) | 416 bytes | 832 bytes | 1664 bytes |
+| Enemy sheet (`176` frames, `16x16`) | 22528 bytes | 45056 bytes | 90112 bytes |
+
+The three tile maps are index grids, so their size does **not** change with color depth:
+- Background map: 2400 bytes
+- Foreground map: 2400 bytes
+- HUD map: 1200 bytes
+
+That gives these total XRAM requirements for the current visual assets:
+
+| Format choice | Total asset memory |
+|---|---:|
+| Current 4bpp setup | 37904 bytes |
+| Same assets at 8bpp | 69808 bytes |
+| Same assets at 16bpp | 133616 bytes |
+
+Since XRAM is only 65536 bytes total, the current 4bpp setup fits, but the same art at 8bpp would already overflow XRAM before accounting for config structs, palettes, input buffers, or OPL registers. That is the strongest practical reason to stay with 4bpp unless you truly need more colors.
+
+One more important detail: Picocomputer **Mode 2** tiles and **Mode 5** sprites are palette-based modes and top out at `8bpp`. A `16bpp` version of the same art would require different video modes and much more memory, so 16-bit color is usually the wrong choice for this style of game.
+
+### Aseprite workflow for sprites
+
+For sprite sheets such as the player, enemies, and projectiles:
+
+1. Create the artwork in **Indexed Color** mode.
+2. Keep each frame square if you plan to use `--mode tile` with `convert_sprite.py`.
+3. Arrange animation frames horizontally in one strip.
+4. Keep the image height equal to the frame size.
+
+Examples from this project:
+- Player sheet: `16x16` frames in a horizontal strip
+- Enemy sheet: `16x16` frames in a horizontal strip
+- Projectile sheet: `8x8` frames in a horizontal strip
+
+That layout matches the converter's expectations:
+
+```bash
+python3 ./tools/convert_sprite.py Sprites/Player.png --mode tile --bpp 4 --out-dir images --extract-palette
+```
+
+### Making a tile map in Aseprite
+
+For scrolling backgrounds and HUD layers, Aseprite's tilemap tools are a good fit.
+
+Recommended workflow:
+
+1. Create or import your tile artwork as an indexed-color tileset.
+2. Make sure the layer you paint on is an actual **TileMap** layer in Aseprite, not a normal raster layer.
+3. Paint the level or background using tile IDs instead of drawing pixels directly.
+4. Export the **tileset artwork** as well as the tilemap itself. RP6502 needs both pieces: the tile pixels and the tile index grid.
+5. Keep your tile size aligned with the mode you plan to use on RP6502.
+
+For this project, the tile system uses:
+- `8x8` tiles
+- up to `256` tile IDs
+- one byte per tile in the exported map
+
+The key idea is that the tilemap file is just a grid of tile indices. The tile pixels live in a separate tileset binary, and the map only says which tile goes at each position.
+
+For this project, that means you typically export two different things from Aseprite:
+- The **tileset image** itself, which later becomes something like `StarFields_tiles_4bpp.bin`
+- The **tilemap layer**, which becomes something like `StarFields_BG_map.bin`
+
+Both are required. The map by itself is only tile numbers; it does not contain the actual tile pixel art.
+
+### Exporting tilemaps with `tools/export_map.lua`
+
+This project includes [tools/export_map.lua](/Users/rowe/Software/rp6502/RPDemo/tools/export_map.lua), which is the exact tool used to export the game's tilemaps.
+
+What the script does:
+- Reads the **active sprite** in Aseprite
+- Requires the **active layer** to be a **tilemap layer**
+- Reads the **active frame**
+- Exports the tilemap as raw bytes, one byte per tile, row by row
+
+Important quirk:
+- The script exports the tilemap based on Aseprite's **bounding box** for the tile content, not a fixed logical map size.
+- In practice, that means you should place a non-transparent tile at the **top-left** corner and another at the **bottom-right** corner of the map area you want exported.
+- If you do not do this, Aseprite may crop the exported tilemap smaller than you expected.
+
+That exported `.bin` file can be used directly as an RP6502 tilemap asset.
+
+Example flow:
+
+1. Open your Aseprite tilemap file.
+2. Confirm that the layer you want to export is a **TileMap** layer.
+3. Export the tileset artwork separately.
+4. Select the tilemap layer you want to export.
+5. Make sure there is a non-transparent tile at the top-left and bottom-right corners of the area you want exported.
+6. Run the Lua script from Aseprite.
+7. Save the output as something like `StarFields_BG_map.bin`.
+8. Add both the tileset asset and the tilemap asset to `CMakeLists.txt`.
+
+Example:
+
+```cmake
+rp6502_asset(RPStarHopper 0x10300 images/StarFields_BG_map.bin)
+```
+
+The script writes one byte per tile ID, so it naturally matches Mode 2 tilemap data:
+
+```c
+struct {
+    uint8_t tile_id;
+} data[width_tiles * height_tiles];
+```
+
+That direct mapping is the main reason this workflow is nice: what you paint in Aseprite as a tilemap becomes exactly what the RP6502 tile engine expects in XRAM.
+
+### Study the source art
+
+The [Sprites](/Users/rowe/Software/rp6502/RPDemo/Sprites) folder contains the Aseprite source files used to build this game. These are useful reference material if you are learning the workflow or want to reuse the same setup for your own project.
+
+Relevant files include:
+- `Player.aseprite`
+- `Enemies.aseprite`
+- `Projectiles.aseprite`
+- `StarFields.aseprite`
+- `Boss_001.aseprite` through `Boss_07.aseprite`
+
+If you want to learn how the graphics were organized, start there. You can inspect frame layout, palette usage, tilesets, and tilemap structure directly in Aseprite instead of guessing from the exported binary files.
+
+### Practical advice
+
+- Use indexed color early. Converting full-color art down later is usually painful.
+- Keep your tile and sprite palettes intentional and limited.
+- Prefer 4bpp unless there is a concrete visual reason to move to 8bpp.
+- Treat tilemaps and tilesets as separate assets: one file for tile pixels, one file for tile placement.
+- If an asset is going into Mode 2 or Mode 5, think in terms of palettes and tile/sprite frames, not full-color bitmaps.
+
 ## Input System
 
 We going to use ```input.c```, ```input.h```, ```player_controller.c```, and ```player_controller.h``` which have been designed to make handling inputs bit easier and also allow for custom key mappings for any gamepad you want to use.  I strongly recommend reading the Picocomputer documentation.  To get started add ```input.c``` and ```player_controller.c``` to CMakeLists.txt and include the headers in main.c.  
@@ -520,7 +799,7 @@ Let's look at part of the code for initializing the tilemaps in ```tile_mode2.c`
     xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, xram_tile_ptr,    STARFIELD_TILES_DATA);  
 
     // Mode 2 args: MODE, OPTIONS, CONFIG, PLANE, BEGIN, END
-    // OPTIONS: bit3=0 (8x8 tiles), bit[2:0]=2 (8-bit color index) => 0b0010 = 2
+    // OPTIONS: bit3=0 (8x8 tiles), bits[2:0]=2 (4bpp, 16 colors) => 0b0010 = 2
     // Plane 0 = background fill layer (behind sprite plane 1)
     if (xreg_vga_mode(2, 0x02, TILE_BG_CONFIG, 0, 24, 0) < 0) {
         puts("xreg_vga_mode failed");
@@ -648,7 +927,29 @@ If we look back at our main loop, we are calling ```tile_mode2_update_scroll();`
 
 The Picocomputer has a built in OPL2 emulator which is very powerful and can create a wide range of sounds and music.  You can use the OPL2 to create music for your game, and you can also use it to create sound effects.  We are going to use VGM music files for our game, which is a common format for chiptune music.  You can find a large library of VGM music files online, or you can create your own using a tracker software like Furnace.   The VGM is streamed from the disk, so you can have long music tracks without taking up valuable XRAM space. 
 
-The key files are ```music.c```, ```opl.c```, ```vgm.c``` and their corresponding header files.  You can add these to your CMakeLists.txt and include the headers in main.c.  The music system will read the VGM file from the disk and stream the OPL commands to the sound chip in real time.   Our asset for this game is called 'RESOURCE.00.vgm'.   
+The key files are ```music.c```, ```opl.c```, ```vgm.c``` and their corresponding header files.  You can add these to your CMakeLists.txt and include the headers in main.c.  The music system will read the VGM file from the disk and stream the OPL commands to the sound chip in real time. VGM tracks are stored as named ROM assets (e.g. `RESOURCE.001.vgm`) and opened at runtime via `open("ROM:RESOURCE.001.vgm", O_RDONLY)`. 
+
+### Development vs Distribution
+
+There are two good ways to load assets on the Picocomputer, and it is worth using each at the right time.
+
+During **development and debugging**, prefer loading music and other large assets as normal external files from the filesystem.  The practical reason is speed: if you change one file, it is much faster to copy that file to the SD card or USB storage than it is to rebuild and upload the entire ROM over a terminal connection.
+
+During **final distribution**, prefer packaging those assets into the ROM and opening them with the `ROM:` prefix.  That gives you a single self-contained game image with the executable, help text, music, and other assets all bundled together.
+
+In practice, the same game code can support both styles:
+
+```c
+// Development: read from external storage
+music_set_track("music/RESOURCE.001.vgm");
+
+// Finished release: read from the bundled ROM asset
+music_set_track("ROM:RESOURCE.001.vgm");
+```
+
+Recommended workflow:
+- Use external files while iterating quickly on music, art, and data files.
+- Switch to `ROM:` paths when you are preparing a finished build to share with other people.
 
 We add the following to ```constants.h```
 ```c
@@ -952,10 +1253,10 @@ rp6502_asset(RPStarHopper 0x13A70 images/Projectiles_4bpp.bin)
 Here is the layout for the projectile sprite data and configuration in XRAM:
 ```c
 #define PROJECTILE_DATA        (STARFIELD_TILES_DATA + STARFIELD_TILES_SIZE) // Address for projectile sprite data
-#define PROJECTILE_DATA_SIZE    0x0140U            // 320 bytes (10 frames 8x8 at 4bpp)
+#define PROJECTILE_DATA_SIZE    0x01A0U            // 416 bytes (13 frames 8x8 at 4bpp)
 #define PROJECTILE_SPRITE_SIZE_PX   8                 // Projectile sprite is 8x8 pixels
 #define PROJECTILE_FRAME_SIZE   0x0020U            // 32 bytes per 8x8 4bpp frame
-#define PROJECTILE_FRAME_COUNT  10                 // 10 frames for projectile/pickups/asteroids
+#define PROJECTILE_FRAME_COUNT  13                 // 13 frames for projectile/pickups/asteroids/explosions
 #define MAX_PROJECTILES         40                  // Max number of projectiles on screen at once
 
 #define SPRITE_DATA_END        (PROJECTILE_DATA + PROJECTILE_DATA_SIZE) // End of sprite data
@@ -968,16 +1269,15 @@ Projectile frame usage:
 - `3`: speed pickup
 - `4`: power pickup
 - `5,6,7`: asteroid animation sequence
+- `10,11,12`: explosion animation sequence
 
 Between-wave asteroid events:
 - On non-final subwave transitions for waves `7..10`, `1..3` asteroids are spawned.
 - Asteroids descend vertically at `1 px/frame` and animate through frames `5,6,7`.
 - Asteroid collision uses a centered `6x6` hitbox inside the `8x8` sprite.
-- When destroyed by a player shot, asteroids roll a pickup drop:
-    - `50%` nothing
-    - `40%` energy
-    - `5%` power
-    - `5%` speed
+- When destroyed by a player shot, asteroids yield a pickup from a fixed repeating sequence:
+    - Sequence: **P → E → (none) → S → E → E → P → E → (none) → E**, then repeats
+    - The sequence persists across all levels and phases within a run
 
 Pickup behavior and effects:
 - Pickup sprites zig-zag horizontally while descending at `0.25 px/frame`.
@@ -1156,14 +1456,14 @@ The implementation has four parts:
 First, add the enemy sprite sheet to CMake:
 
 ```cmake
-rp6502_asset(RPStarHopper 0x13BB0 images/Enemies_4bpp.bin)
+rp6502_asset(RPStarHopper 0x13C10 images/Enemies_4bpp.bin)
 ```
 
 Then define enemy layout in constants.h:
 
 ```c
 #define ENEMY_DATA             (PROJECTILE_DATA + PROJECTILE_DATA_SIZE)
-#define ENEMY_DATA_SIZE        0x2200U              // 68 frames * 128 bytes
+#define ENEMY_DATA_SIZE        0x5800U              // 22528 bytes (176 frames 16x16 at 4bpp)
 #define ENEMY_SPRITE_SIZE_PX   16
 #define ENEMY_FRAME_SIZE       0x0080U
 #define ENEMY_TYPE_COUNT       7
