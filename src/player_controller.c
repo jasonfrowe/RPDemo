@@ -12,7 +12,7 @@
 // To tune: change PLAYER_DEFAULT_SPEED. Range is PLAYER_SPEED_MIN to PLAYER_SPEED_MAX.
 #define PLAYER_DEFAULT_SPEED  5     // 1.25 px/frame
 #define PLAYER_SPEED_MIN      1     // 0.25 px/frame
-#define PLAYER_SPEED_MAX      10    // 2.5 px/frame
+#define PLAYER_SPEED_MAX      9     // 2.25 px/frame
 #define PLAYER_RESPAWN_INVINCIBLE_FRAMES (3 * 60)
 #define PLAYER_RESPAWN_RISE_SPEED_PX 2
 #define PLAYER_RESPAWN_BLINK_TOGGLE_FRAMES 6
@@ -28,7 +28,7 @@ static uint8_t player_health = PLAYER_MAX_HEALTH;
 static uint8_t hit_cooldown = 0;
 static uint8_t damage_flash_timer = 0;
 static bool player_destroyed = false;
-static uint8_t death_anim_frame = PLAYER_DEATH_FRAME_START;
+static uint8_t death_anim_frame = PLAYER_DEATH_FRAME_START; 
 static uint8_t death_anim_tick = 0;
 static uint8_t death_anim_hold_tick = 0;
 static bool death_animation_complete = false;

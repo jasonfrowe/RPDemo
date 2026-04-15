@@ -20,7 +20,7 @@
 #define PLAYER_START_X ((SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX) / 2)
 #define PLAYER_START_Y (((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) * 2) / 3)
 #define BONUS_ENTRY_HOLD_FRAMES 60
-#define PLAYER_START_EXTRA_LIVES 2
+#define PLAYER_START_EXTRA_LIVES 0
 
 static gameplay_runtime_t runtime_state = {
     .game_over_timer = 0,

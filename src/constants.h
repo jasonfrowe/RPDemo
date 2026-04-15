@@ -43,7 +43,7 @@
 // Projectile movement
 #define PROJECTILE_SPEED_PX     4                   // Pixels per frame
 #define PLAYER_FIRE_RATE        20                  // Frames between player shots (lower = faster)
-#define PLAYER_FIRE_RATE_MIN    12                  // Cap for power pickups (lower = faster)
+#define PLAYER_FIRE_RATE_MIN    16                  // Cap for power pickups (lower = faster)
 #define HUD_TOP_PX              24                  // Rows 0-23 are HUD; bullets expire when y < HUD_TOP_PX
 
 // Player health and damage tuning
