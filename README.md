@@ -45,6 +45,7 @@ Your ship has 48 HP. The health bar at the top right turns red when HP drops bel
 - [Introduction](#introduction)
 - [Platform Concepts](#platform-concepts)
 - [Getting Started](#getting-started)
+- [Provided Image Assets](#provided-image-assets)
 - [Setting up Graphics](#setting-up-graphics)
 - [Adding a Sprite](#adding-a-sprite)
 - [Converting PNG Assets](#converting-png-assets)
@@ -174,6 +175,37 @@ At this point, you should be able to build the project in VS Code with the build
 python3 ./tools/rp6502.py run build/RPStarHopper.rp6502
 python3 ./tools/rp6502_mac.py run build/RPStarHopper.rp6502
 ```
+
+## Provided Image Assets
+
+Before we start graphics setup, here is what is already provided in `images/` and how each file is used.
+
+### Runtime assets used by the game
+
+| File | Size | Purpose |
+|---|---:|---|
+| `Player_4bpp.bin` | 768 bytes | Player sprite sheet (6 frames, 16x16, 4bpp). |
+| `Projectiles_4bpp.bin` | 416 bytes | Projectiles, pickups, asteroids, and explosion frames (13 frames, 8x8, 4bpp). |
+| `Enemies_4bpp.bin` | 22528 bytes | Enemy + boss sprite sheet (176 frames, 16x16, 4bpp). |
+| `StarFields_tiles_4bpp.bin` | 8096 bytes | Shared tile pixel data for BG/FG/HUD; 8x8 tiles at 4bpp (currently 253 tiles present, 256 max supported). |
+| `StarFields_BG_map.bin` | 2400 bytes | Background tilemap index grid (40x60, 1 byte per tile). |
+| `StarFields_FG_map.bin` | 2400 bytes | Foreground tilemap index grid (40x60, 1 byte per tile). |
+| `StarFields_HUD_map.bin` | 1200 bytes | HUD tilemap index grid (40x30, 1 byte per tile). |
+| `StarFields_HUD_map1.bin` | 1200 bytes | ROM-named HUD map variant used for restoring HUD tiles from ROM when needed. |
+
+### Palette helper files
+
+These are generated helper artifacts from conversion scripts. They are useful for editing and code generation, but the game primarily consumes the `.bin` image/map assets above.
+
+| File pattern | Purpose |
+|---|---|
+| `*_4bpp_palette.bin` | Raw 16-color palette data (32 bytes) for a converted asset. |
+| `*_4bpp_palette.h` | C header with palette constants for compile-time use. |
+
+Asset naming convention in this project:
+- `*_4bpp.bin` = pixel data (tile/sprite frames)
+- `*_map.bin` = tile index map data
+- `*_palette.*` = palette helper output
 
 ## Setting up Graphics
 
