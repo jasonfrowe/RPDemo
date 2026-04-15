@@ -76,6 +76,10 @@ static uint8_t health_flash_tick = 0;
 #define COLOR_ALPHA_MASK (1u<<5)
 #endif
 
+#define BOSS_HEALTH_TILE_FULL_INDEX 211
+#define BOSS_HEALTH_TILE_EMPTY_INDEX 219
+#define BOSS_LOW_HEALTH_THRESHOLD (BOSS_MAX_HEALTH / 3)
+
 static uint8_t title_palette_tick = 0;
 static uint8_t title_palette_phase = 0;
 
@@ -92,6 +96,8 @@ static const uint16_t title_rainbow_palette[] = {
 static const uint16_t hud_health_default_color = tile_hud_palette[10];
 static const uint16_t hud_health_low_color = COLOR_FROM_RGB8(255, 24, 24) | COLOR_ALPHA_MASK;
 static const uint16_t hud_health_flash_color = COLOR_FROM_RGB8(255, 255, 255) | COLOR_ALPHA_MASK;
+static const uint16_t boss_health_good_color = COLOR_FROM_RGB8(32, 255, 32) | COLOR_ALPHA_MASK;
+static const uint16_t boss_health_low_color = COLOR_FROM_RGB8(255, 32, 32) | COLOR_ALPHA_MASK;
 
 static void tile_mode2_write_hud_palette_entry(uint8_t index, uint16_t color)
 {
@@ -789,6 +795,7 @@ void tile_mode2_set_boss_hud_visible(bool visible)
     if (!visible) {
         tile_mode2_clear_hud_text(BOSS_HUD_LABEL_X, BOSS_HUD_LABEL_Y, BOSS_LABEL_TEXT_LEN);
         tile_mode2_clear_hud_text(BOSS_HUD_HEALTH_X, BOSS_HUD_HEALTH_Y, HEALTH_BAR_TILE_COUNT);
+        tile_mode2_write_hud_palette_entry(12, tile_hud_palette[12]);
         return;
     }
 
@@ -806,6 +813,10 @@ void tile_mode2_set_boss_hud_visible(bool visible)
 
 void tile_mode2_set_boss_health(uint8_t health)
 {
+    uint16_t boss_color = (health <= BOSS_LOW_HEALTH_THRESHOLD) ? boss_health_low_color : boss_health_good_color;
+
+    tile_mode2_write_hud_palette_entry(12, boss_color);
+
     for (uint8_t i = 0; i < HEALTH_BAR_TILE_COUNT; ++i) {
         int16_t segment_health = (int16_t)health - (int16_t)(i * HEALTH_PER_BAR_TILE);
         uint8_t fill;
@@ -819,7 +830,7 @@ void tile_mode2_set_boss_health(uint8_t health)
             fill = (uint8_t)segment_health;
         }
 
-        tile_index = (uint8_t)(HEALTH_BAR_TILE_EMPTY_INDEX - fill);
+        tile_index = (uint8_t)(BOSS_HEALTH_TILE_EMPTY_INDEX - fill);
         tile_mode2_write_tile(
             STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
