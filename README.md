@@ -1,5 +1,7 @@
 # RP6502 Game Demo for LLVM-MOS
 
+![GamePlay](Screenshots/Screenshot_005.png)
+
 ## Star Hopper — How to Play
 
 Star Hopper is a vertical shoot-em-up for the Picocomputer (RP6502). Fight through 7 levels of enemy waves, defeat a boss at the end of each level, and survive to reach the YOU WIN screen.
