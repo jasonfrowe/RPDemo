@@ -1,4 +1,4 @@
-# RP6502 Game Demo for the [Picocomputer 6502](https://github.com/picocomputer) with LLVM-MOS-SDK
+# RP6502 Game Demo for the [Picocomputer 6502](https://github.com/picocomputer) using [LLVM-MOS-SDK](https://github.com/llvm-mos/llvm-mos-sdk)
 
 ![TitleScreen](Screenshots/Star_Hopper_Final.gif)
 
