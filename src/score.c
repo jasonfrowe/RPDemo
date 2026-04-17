@@ -1,16 +1,45 @@
 #include <stdint.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "score.h"
 #include "constants.h"
 #include "tile_mode2.h"
 
 static uint32_t g_score = 0;
+static uint32_t g_hiscore = 0;
 static uint16_t g_level_kills[ENEMY_TYPE_COUNT];
 static uint8_t g_multiplier = 1;
 static uint8_t g_kills_since_hit = 0;
 
 #define SCORE_MULTIPLIER_MAX 5u
+#define HISCORE_FILE "highscore_starhopper.dat"
+
+static void score_try_update_hiscore(void)
+{
+    if (g_score > g_hiscore) {
+        g_hiscore = g_score;
+    }
+}
+
+static void score_load_hiscore(void)
+{
+    int fd = open(HISCORE_FILE, O_RDONLY);
+    if (fd < 0) {
+        g_hiscore = 0;
+        return;
+    }
+
+    if (read(fd, &g_hiscore, sizeof(g_hiscore)) != (int)sizeof(g_hiscore)) {
+        g_hiscore = 0;
+    }
+    close(fd);
+
+    if (g_hiscore > 999999u) {
+        g_hiscore = 999999u;
+    }
+}
 
 uint8_t score_points_for_enemy(uint8_t enemy_type)
 {
@@ -30,6 +59,7 @@ void score_init(void)
     g_score = 0;
     g_multiplier = 1;
     g_kills_since_hit = 0;
+    score_load_hiscore();
     score_reset_level_kills();
     tile_mode2_set_score(g_score);
     tile_mode2_set_multiplier(g_multiplier);
@@ -54,6 +84,8 @@ void score_add_enemy_kill(uint8_t enemy_type)
         }
     }
 
+    score_try_update_hiscore();
+
     if ((g_kills_since_hit % 2u) == 0u && g_multiplier < SCORE_MULTIPLIER_MAX) {
         g_multiplier++;
     }
@@ -73,6 +105,7 @@ void score_add_points(uint32_t points)
         g_score = 999999u;
     }
 
+    score_try_update_hiscore();
     tile_mode2_set_score(g_score);
 }
 
@@ -133,6 +166,7 @@ uint32_t score_add_level_bonus(uint8_t level_multiplier)
         }
     }
 
+    score_try_update_hiscore();
     tile_mode2_set_score(g_score);
     return added;
 }
@@ -140,4 +174,20 @@ uint32_t score_add_level_bonus(uint8_t level_multiplier)
 uint32_t score_get(void)
 {
     return g_score;
+}
+
+uint32_t score_get_hiscore(void)
+{
+    return g_hiscore;
+}
+
+void score_commit_hiscore(void)
+{
+    int fd = open(HISCORE_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) {
+        return;
+    }
+
+    (void)write(fd, &g_hiscore, sizeof(g_hiscore));
+    close(fd);
 }

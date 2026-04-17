@@ -117,6 +117,7 @@ void gameplay_update_playing_state(gameplay_runtime_t *state)
         }
 
         if (game_state_enter_game_over() == GAME_TRANSITION_ENTER_GAME_OVER) {
+            score_commit_hiscore();
             projectile_init();
             enemy_init();
             enemy_hide_bonus_icons();

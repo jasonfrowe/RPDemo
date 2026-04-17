@@ -38,6 +38,10 @@ static uint8_t health_flash_tick = 0;
 #define SCORE_DIGITS 6
 #define SCORE_TILE_X 17
 #define SCORE_TILE_Y 1
+#define HISCORE_TEXT_X 13
+#define HISCORE_TEXT_Y 17
+#define HISCORE_VALUE_X 21
+#define HISCORE_VALUE_Y 17
 #define SCORE_TILE_INDEX_BASE 19
 #define MULTIPLIER_TILE_X 0
 #define MULTIPLIER_TILE_Y 28
@@ -409,6 +413,48 @@ void tile_mode2_set_score(uint32_t score)
             STARFIELD_HUD_WIDTH,
             (uint8_t)(SCORE_TILE_X + i),
             SCORE_TILE_Y,
+            (uint8_t)(SCORE_TILE_INDEX_BASE + digit)
+        );
+    }
+}
+
+void tile_mode2_set_hiscore(uint32_t score)
+{
+    static const uint8_t hiscore_tiles[8] = {
+        234, // H
+        235, // I
+        245, // S
+        229, // C
+        241, // O
+        244, // R
+        231, // E
+        HUD_SYMBOL_EQUALS_TILE_INDEX,
+    };
+    int8_t i;
+
+    if (score > 999999u) {
+        score = 999999u;
+    }
+
+    // tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
+    for (uint8_t t = 0; t < 8; ++t) {
+        tile_mode2_write_tile(
+            STARFIELD_HUD_DATA,
+            STARFIELD_HUD_WIDTH,
+            (uint8_t)(HISCORE_TEXT_X + t),
+            HISCORE_TEXT_Y,
+            hiscore_tiles[t]
+        );
+    }
+
+    for (i = (SCORE_DIGITS - 1); i >= 0; --i) {
+        uint8_t digit = (uint8_t)(score % 10u);
+        score /= 10u;
+        tile_mode2_write_tile(
+            STARFIELD_HUD_DATA,
+            STARFIELD_HUD_WIDTH,
+            (uint8_t)(HISCORE_VALUE_X + i),
+            HISCORE_VALUE_Y,
             (uint8_t)(SCORE_TILE_INDEX_BASE + digit)
         );
     }

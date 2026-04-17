@@ -69,6 +69,7 @@ void tile_mode2_start_level_bonus_transition(void);
 bool tile_mode2_restore_hud_from_rom(void);
 void tile_mode2_update_title_palette(void);
 void tile_mode2_set_score(uint32_t score);
+void tile_mode2_set_hiscore(uint32_t score);
 void tile_mode2_set_multiplier(uint8_t multiplier);
 void tile_mode2_set_paused_banner(bool visible);
 void tile_mode2_set_level_banner(uint8_t level, bool visible);

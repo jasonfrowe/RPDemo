@@ -377,6 +377,7 @@ void gameplay_frame(bool start_pressed)
     if (state == GAME_STATE_TITLE) {
         sprite_mode5_update_engine(false);
         tile_mode2_update_title_palette();
+        tile_mode2_set_hiscore(score_get_hiscore());
     }
 
     if (state != GAME_STATE_PAUSED) {

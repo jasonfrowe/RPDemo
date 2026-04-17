@@ -14,5 +14,7 @@ uint16_t score_get_level_kills(uint8_t enemy_type);
 uint16_t score_get_level_total_kills(void);
 uint32_t score_add_level_bonus(uint8_t level_multiplier);
 uint32_t score_get(void);
+uint32_t score_get_hiscore(void);
+void score_commit_hiscore(void);
 
 #endif // SCORE_H
