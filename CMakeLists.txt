@@ -1,9 +1,6 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.21)
 
-add_subdirectory(tools)
-
-set(LLVM_MOS_PLATFORM rp6502)
-find_package(llvm-mos-sdk REQUIRED)
+include(${CMAKE_CURRENT_LIST_DIR}/tools/rp6502.cmake)
 
 project(RPStarHopper C CXX ASM)
 
