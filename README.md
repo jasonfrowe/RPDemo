@@ -112,7 +112,9 @@ This demo's plane layout:
 - `3` — 640×480 (4:3)
 - `4` — 640×360 (16:9)
 
-The register `RIA.vsync` at address `0xFFE3` increments once per frame (~60 Hz) when a VGA module is connected. Your game loop compares it against a saved value to know when a new frame has started:
+The register `RIA.vsync` at address `0xFFE3` increments once per frame (~60 Hz) when a VGA module is connected. In practice, this tick is generated at the frame boundary (after the last programmed scanline), so it lines up closely with the start of vertical blanking. That gives you a short, reliable window to update graphics registers without visible tearing.
+
+The API name is `vsync`, but when writing gameplay code it is often easiest to think of it as a frame/vblank boundary signal. Your game loop compares it against a saved value to know when a new frame has started:
 
 ```c
 if (RIA.vsync == vsync_last) continue; // same frame — spin
@@ -128,6 +130,15 @@ rp6502_asset(RPStarHopper 0x10000 images/Player_4bpp.bin)
 ```
 
 Within your C code, XRAM is addressed `0x0000–0xFFFF`. The `0x10000` prefix in CMake is a ROM packaging convention: the ROM loader uses addresses `0x10000–0x1FFFF` to mean "load this into XRAM". Your `ADDR0` portal and all XRAM struct pointers always use plain 16-bit XRAM addresses. This is why `constants.h` defines `PLAYER_DATA = 0x0000` even though CMakeLists.txt says `0x10000`.
+
+Quick mental model for addresses:
+- **System RAM (`0x0000–0xFFFF`)**: normal 6502-visible RAM for code/data/stack.
+- **XRAM (`0x0000–0xFFFF`)**: separate 64 KB memory accessed through RIA portals (`ADDR0/RW0`, `ADDR1/RW1`).
+- **ROM-packaging XRAM alias (`0x10000–0x1FFFF`)**: build-time/load-time notation meaning "copy into XRAM at low 16 bits".
+
+Example: `rp6502_asset(... 0x13A70 images/Projectiles_4bpp.bin)` means the file is packaged as a ROM chunk tagged for XRAM destination `0x3A70`.
+
+You will also see **named ROM assets** like `RESOURCE.001.vgm` or `StarFields_HUD_map.bin`. These are opened by name via `open("ROM:...")` and are not fixed XRAM addresses unless your code explicitly copies them into XRAM.
 
 ### Configuring Video Modes with XREG
 
@@ -589,7 +600,7 @@ That gives these total XRAM requirements for the current visual assets:
 
 Since XRAM is only 65536 bytes total, the current 4bpp setup fits, but the same art at 8bpp would already overflow XRAM before accounting for config structs, palettes, input buffers, or OPL registers. That is the strongest practical reason to stay with 4bpp unless you truly need more colors.
 
-Note: The Picocomputer has fast USB access to the SD card, so it is technically possible to stream larger assets from storage into XRAM on demand. However, that adds complexity and is out of scope for this project.
+Note: The Picocomputer has fast access to USB flash media, so it is technically possible to stream larger assets from storage into XRAM on demand. However, that adds complexity and is out of scope for this project.
 
 One more important detail: Picocomputer **Mode 2** tiles and **Mode 5** sprites are palette-based modes and top out at `8bpp`. A `16bpp` version of the same art would require different video modes and much more memory, so 16-bit color is usually the wrong choice for this style of game.
 
@@ -1076,6 +1087,55 @@ music_set_track("ROM:RESOURCE.001.vgm");
 Recommended workflow:
 - Use external files while iterating quickly on music, art, and data files.
 - Switch to `ROM:` paths when you are preparing a finished build to share with other people.
+
+If you want CMake to skip packaging named ROM assets while developing, a simple toggle works well.
+
+In `CMakeLists.txt`:
+
+```cmake
+option(RPSTARHOPPER_PACKAGE_ROM_ASSETS "Bundle named ROM assets" ON)
+
+if (RPSTARHOPPER_PACKAGE_ROM_ASSETS)
+    target_compile_definitions(RPStarHopper PRIVATE ASSET_PREFIX="ROM:")
+
+    rp6502_asset(RPStarHopper RESOURCE.001.vgm music/RESOURCE.001.vgm)
+    rp6502_asset(RPStarHopper RESOURCE.002.vgm music/RESOURCE.002.vgm)
+    # ...other named ROM assets...
+else()
+    target_compile_definitions(RPStarHopper PRIVATE ASSET_PREFIX="")
+endif()
+```
+
+In code, build paths from one prefix:
+
+```c
+#ifndef ASSET_PREFIX
+#define ASSET_PREFIX "ROM:"
+#endif
+
+#define TRACK_PATH(name) ASSET_PREFIX name
+
+music_set_track(TRACK_PATH("RESOURCE.001.vgm"));
+```
+
+Then configure per build:
+
+```bash
+# Development: do not package named ROM assets
+cmake -S . -B build -DRPSTARHOPPER_PACKAGE_ROM_ASSETS=OFF
+
+# Distribution: package named ROM assets and use ROM: prefix
+cmake -S . -B build -DRPSTARHOPPER_PACKAGE_ROM_ASSETS=ON
+```
+
+For development builds, upload only changed files instead of a full ROM image. The helper script supports direct file upload and a reusable serial config file:
+
+```bash
+# Creates/uses .rp6502 with saved device settings
+python3 ./tools/rp6502.py --config .rp6502 upload music/RESOURCE.001.vgm
+```
+
+If you upload to a subdirectory on USB media, include that directory in runtime paths (for example `music/RESOURCE.001.vgm`).
 
 We add the following to ```constants.h```
 ```c
@@ -1698,7 +1758,7 @@ wave_primary_type = enemy_get_primary_type_for_subwave(current_subwave);
 
 ### 4. Bullet vs Enemy Collision
 
-Collision is implemented as AABB overlap between an enemy box and active player bullets.
+Collision is implemented as axis-aligned bounding box (AABB) overlap between an enemy rectangle and active player bullet rectangles.
 
 When a bullet hit is confirmed, enemies now enter a dedicated dying state instead of being removed instantly:
 - Dying enemies play the 3-frame destruction sequence (`+3,+4,+5`) at a cadence similar to player destruction.
