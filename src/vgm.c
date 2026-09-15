@@ -1,14 +1,16 @@
 #include "vgm.h"
 
-#include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "opl.h"
+
+// VGM_SEEK_SET (0 on this platform's SDK) is only ever defined in stdio.h,
+// which drags in the full buffered-I/O/malloc subsystem for one constant.
+#define VGM_SEEK_SET 0
 
 #define VGM_MAX_COMMANDS_PER_UPDATE 256u
 
@@ -50,7 +52,7 @@ static bool skip_bytes(vgm_player_t *player, uint32_t count) {
 }
 
 static bool seek_data_start(vgm_player_t *player) {
-    if (lseek(player->fd, (long)player->data_offset, SEEK_SET) < 0) {
+    if (lseek(player->fd, (long)player->data_offset, VGM_SEEK_SET) < 0) {
         return false;
     }
     player->buffer_pos = 0;
@@ -60,7 +62,7 @@ static bool seek_data_start(vgm_player_t *player) {
     return true;
 }
 
-bool vgm_open(vgm_player_t *player, const char *path, char *status_line, uint16_t status_size) {
+bool vgm_open(vgm_player_t *player, const char *path) {
     uint8_t header[0x100];
     int got;
     uint32_t data_rel;
@@ -73,19 +75,16 @@ bool vgm_open(vgm_player_t *player, const char *path, char *status_line, uint16_
 
     player->fd = open(path, O_RDONLY);
     if (player->fd < 0) {
-        snprintf(status_line, status_size, "Open failed (%d)", errno);
         return false;
     }
 
     got = read(player->fd, header, sizeof(header));
     if (got < 0x40) {
-        snprintf(status_line, status_size, "VGM header too small");
         vgm_close(player);
         return false;
     }
 
     if (memcmp(header, "Vgm ", 4) != 0) {
-        snprintf(status_line, status_size, "Not a VGM file");
         vgm_close(player);
         return false;
     }
@@ -104,12 +103,10 @@ bool vgm_open(vgm_player_t *player, const char *path, char *status_line, uint16_
     }
 
     if (!seek_data_start(player)) {
-        snprintf(status_line, status_size, "Seek failed (%d)", errno);
         vgm_close(player);
         return false;
     }
 
-    snprintf(status_line, status_size, "Playing");
     return true;
 }
 
@@ -134,7 +131,7 @@ void vgm_close(vgm_player_t *player) {
     player->reached_end = false;
 }
 
-static bool parse_next_command(vgm_player_t *player, bool *track_ended, char *status_line, uint16_t status_size) {
+static bool parse_next_command(vgm_player_t *player, bool *track_ended) {
     uint8_t cmd;
 
     if (!read_byte(player, &cmd)) {
@@ -179,7 +176,7 @@ static bool parse_next_command(vgm_player_t *player, bool *track_ended, char *st
         return true;
     case 0x66:
         if (player->has_loop && player->loop_enabled) {
-            if (lseek(player->fd, (long)player->loop_offset, SEEK_SET) >= 0) {
+            if (lseek(player->fd, (long)player->loop_offset, VGM_SEEK_SET) >= 0) {
                 player->buffer_pos = 0;
                 player->buffer_size = 0;
                 return true;
@@ -205,7 +202,6 @@ static bool parse_next_command(vgm_player_t *player, bool *track_ended, char *st
         }
 
         if (marker != 0x66) {
-            snprintf(status_line, status_size, "Warning: malformed data block");
             return true;
         }
 
@@ -231,16 +227,13 @@ static bool parse_next_command(vgm_player_t *player, bool *track_ended, char *st
     case 0xE0:
         return skip_bytes(player, 4);
     default:
-        snprintf(status_line, status_size, "Warning: unsupported cmd 0x%02X", cmd);
         return true;
     }
 }
 
 void vgm_update(vgm_player_t *player,
                 uint32_t sample_budget,
-                bool *track_ended,
-                char *status_line,
-                uint16_t status_size) {
+                bool *track_ended) {
     uint16_t commands_executed = 0;
     *track_ended = false;
 
@@ -264,7 +257,7 @@ void vgm_update(vgm_player_t *player,
             break;
         }
 
-        if (!parse_next_command(player, track_ended, status_line, status_size)) {
+        if (!parse_next_command(player, track_ended)) {
             break;
         }
 

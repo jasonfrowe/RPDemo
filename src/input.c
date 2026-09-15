@@ -1,5 +1,6 @@
 #include <rp6502.h>
-#include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
@@ -26,21 +27,26 @@ uint8_t keystates[KEYBOARD_BYTES] = {0};
 
 static bool load_button_mappings(uint8_t player_id)
 {
-    FILE* fp = fopen(JOYSTICK_CONFIG_FILE, "rb");
-    if (!fp) {
+    int fd = open(JOYSTICK_CONFIG_FILE, O_RDONLY);
+    if (fd < 0) {
         return false;
     }
 
-    int count = fgetc(fp);
+    uint8_t count_byte;
+    if (read(fd, &count_byte, 1) != 1) {
+        close(fd);
+        return false;
+    }
+    int count = count_byte;
     if (count <= 0 || count > ACTION_COUNT) {
-        fclose(fp);
+        close(fd);
         return false;
     }
 
     for (int i = 0; i < count; i++) {
         JoystickMapping mapping;
-        if (fread(&mapping, sizeof(JoystickMapping), 1, fp) != 1) {
-            fclose(fp);
+        if (read(fd, &mapping, sizeof(JoystickMapping)) != sizeof(JoystickMapping)) {
+            close(fd);
             return false;
         }
 
@@ -54,7 +60,7 @@ static bool load_button_mappings(uint8_t player_id)
         button_mappings[player_id][mapping.action_id].gamepad_mask2 = 0;
     }
 
-    fclose(fp);
+    close(fd);
     return true;
 }
 

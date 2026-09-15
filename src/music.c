@@ -9,12 +9,11 @@
 #include "vgm.h"
 
 static vgm_player_t g_player;
-static char g_status_line[64];
 static const char *k_music_path = "ROM:RESOURCE.001.vgm";
 
 static bool music_start_current(void) {
     opl_init();
-    if (!vgm_open(&g_player, k_music_path, g_status_line, sizeof(g_status_line))) {
+    if (!vgm_open(&g_player, k_music_path)) {
         return false;
     }
 
@@ -63,7 +62,7 @@ void music_update(void) {
         return;
     }
 
-    vgm_update(&g_player, 735u, &track_ended, g_status_line, sizeof(g_status_line));
+    vgm_update(&g_player, 735u, &track_ended);
     if (track_ended) {
         if (!vgm_restart(&g_player)) {
             vgm_close(&g_player);
