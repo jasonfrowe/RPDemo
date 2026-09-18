@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Generate Furnace (.fur) tracker projects for RPStarHopper's OPL2 music.
 
-Procedurally composes Kraftwerk-leaning electronic/synth OPL2 tracks for
-each of the game's music slots and writes them as Furnace 0.6.8.1-compatible
-.fur files, using
-RPTracker's 256-patch instrument bank. Open the result in Furnace to
-audition and tweak by hand; pass --export-vgm to also render straight to
-music/RESOURCE.NNN.vgm using Furnace's own headless exporter (equivalent to
-File > Export > VGM in the GUI). Without that flag, this tool never touches
-music/RESOURCE.NNN.vgm or CMakeLists.txt.
+Procedurally composes OPL2 tracks for each of the game's music slots, in
+one of a few styles (--style, see musicgen/compose.py's STYLE_NAMES: 0
+silpheed/orchestral, 1 kraftwerk/motorik electronic (default), 2 daftpunk/
+house-funk electronic), and writes them as Furnace 0.6.8.1-compatible .fur
+files, using RPTracker's 256-patch instrument bank. Open the result in
+Furnace to audition and tweak by hand; pass --export-vgm to also render
+straight to music/RESOURCE.NNN.vgm using Furnace's own headless exporter
+(equivalent to File > Export > VGM in the GUI). Without that flag, this
+tool never touches music/RESOURCE.NNN.vgm or CMakeLists.txt.
 
 IMPORTANT: exported VGM must be plain OPL2 (YM3812), never OPL3/dual-chip.
 RPDemo's VGM player (src/vgm.c) only understands a minimal opcode set and
@@ -42,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import random
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -136,15 +138,15 @@ def _export_vgm(fur_path: Path, vgm_path: Path) -> None:
 
 def generate_one(spec: "tracks.TrackSpec", seed: int, bank, out_dir: Path,
                   export_vgm: bool = False, vgm_out_dir: Path = DEFAULT_VGM_OUT_DIR,
-                  vol_overrides: dict = None, patch_overrides: dict = None) -> Path:
+                  vol_overrides: dict = None, patch_overrides: dict = None, style: int = compose.STYLE_KRAFTWERK) -> Path:
     song, ins = compose.generate_track(
         name=f"{spec.resource} - {spec.description}", mood=spec.mood, seed=seed, bank=bank,
-        vol_overrides=vol_overrides, patch_overrides=patch_overrides,
+        vol_overrides=vol_overrides, patch_overrides=patch_overrides, style=style,
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{spec.resource}.fur"
     write_fur(str(out_path), song)
-    print(f"{spec.resource} ({', '.join(spec.aliases)}) -> {out_path}  [seed={seed}]  {spec.description}")
+    print(f"{spec.resource} ({', '.join(spec.aliases)}) -> {out_path}  [seed={seed}, style={style} ({compose.STYLE_NAMES[style]})]  {spec.description}")
     _validate_with_furnace(out_path)
     if export_vgm:
         _export_vgm(out_path, vgm_out_dir / f"{spec.resource}.vgm")
@@ -152,7 +154,7 @@ def generate_one(spec: "tracks.TrackSpec", seed: int, bank, out_dir: Path,
     vol_overrides = vol_overrides or {}
     vol_str = ",".join(str(vol_overrides.get(role, 0)) for role in ROLE_ORDER)
     patch_str = ",".join(f"{ins[role]:02X}" for role in ROLE_ORDER)
-    print(f"  regenerate: python3 tools/generate_music.py --track {spec.aliases[0]} --seed {seed} "
+    print(f"  regenerate: python3 tools/generate_music.py --track {spec.aliases[0]} --seed {seed} --style {style} "
           f"--vol {vol_str} --patch {patch_str}")
     return out_path
 
@@ -161,6 +163,27 @@ def cmd_list() -> None:
     for spec in tracks.TRACKS:
         aliases = ", ".join(spec.aliases)
         print(f"{spec.resource}  ({aliases:<20}) {spec.description}")
+
+
+def _fuse_negative_values(argv: list[str]) -> list[str]:
+    """`--vol -4,2,...` (space form) reads as `--vol` with no value to argparse,
+    since it only recognizes a following token as a value when it doesn't look
+    like another option -- and a leading '-' makes it look like one. None of
+    this parser's flags start with a digit, so `--vol`/`--patch` followed by a
+    token matching -digit... is unambiguously that flag's value; fuse it into
+    the `--vol=...` form argparse already handles correctly.
+    """
+    fused = []
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok in ("--vol", "--patch") and i + 1 < len(argv) and re.match(r"^-\d", argv[i + 1]):
+            fused.append(f"{tok}={argv[i + 1]}")
+            i += 2
+            continue
+        fused.append(tok)
+        i += 1
+    return fused
 
 
 def main() -> int:
@@ -178,12 +201,18 @@ def main() -> int:
                                        f"{','.join(ROLE_ORDER)} order (only valid with a single --track)")
     parser.add_argument("--patch", help=f"{len(ROLE_ORDER)} comma-separated hex instrument indices (00-FF), "
                                          f"{','.join(ROLE_ORDER)} order (only valid with a single --track)")
+    style_choices = ", ".join(f"{k}={v}" for k, v in sorted(compose.STYLE_NAMES.items()))
+    parser.add_argument("--style", type=int, default=compose.STYLE_KRAFTWERK,
+                         help=f"composition style: {style_choices} (default: {compose.STYLE_KRAFTWERK})")
     parser.add_argument("--list", action="store_true", help="list all tracks and exit")
-    args = parser.parse_args()
+    args = parser.parse_args(_fuse_negative_values(sys.argv[1:]))
 
     if args.list:
         cmd_list()
         return 0
+
+    if args.style not in compose.STYLE_NAMES:
+        parser.error(f"--style must be one of {style_choices}, got {args.style}")
 
     if not args.track:
         parser.error("--track is required (or use --list)")
@@ -199,7 +228,7 @@ def main() -> int:
         bank = load_bank()
         for spec in tracks.TRACKS:
             generate_one(spec, random.randrange(2**31), bank, out_dir,
-                         export_vgm=args.export_vgm, vgm_out_dir=vgm_out_dir)
+                         export_vgm=args.export_vgm, vgm_out_dir=vgm_out_dir, style=args.style)
         return 0
 
     try:
@@ -218,7 +247,7 @@ def main() -> int:
     seed = args.seed if args.seed is not None else random.randrange(2**31)
     bank = load_bank()
     generate_one(spec, seed, bank, out_dir, export_vgm=args.export_vgm, vgm_out_dir=vgm_out_dir,
-                 vol_overrides=vol_overrides, patch_overrides=patch_overrides)
+                 vol_overrides=vol_overrides, patch_overrides=patch_overrides, style=args.style)
     return 0
 
 

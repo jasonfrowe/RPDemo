@@ -1,11 +1,12 @@
 # RPStarHopper music generator
 
-Procedurally composes original, royalty-free, Kraftwerk-leaning
-electronic/synth OPL2 tracks for each of RPStarHopper's music slots, and
-writes them straight out as [Furnace](https://github.com/tildearrow/furnace)
-tracker `.fur` project files. Open the result in Furnace to audition and
-tweak by hand; pass `--export-vgm` to also render straight to
-`music/RESOURCE.NNN.vgm` using Furnace's own headless exporter.
+Procedurally composes original, royalty-free OPL2 tracks for each of
+RPStarHopper's music slots, in one of a few styles (`--style`, see below),
+and writes them straight out as
+[Furnace](https://github.com/tildearrow/furnace) tracker `.fur` project
+files. Open the result in Furnace to audition and tweak by hand; pass
+`--export-vgm` to also render straight to `music/RESOURCE.NNN.vgm` using
+Furnace's own headless exporter.
 
 (An earlier version of this tool leaned orchestral/Silpheed-inspired, and a
 separate attempt to generate melodies with a small VAE trained on real
@@ -65,6 +66,24 @@ Both only make sense with a single `--track`, not `--track all`. Changing
 `--vol`/`--patch` never perturbs the rest of the composition for a given
 `--seed` — the same chord progression, arrangement, and melodic content
 comes out either way, only the mix/instrumentation changes.
+
+## `--style`: which composer runs
+
+```sh
+python3 tools/generate_music.py --track boss --style 2   # daftpunk
+```
+
+| `--style` | Name | Character |
+|---|---|---|
+| 0 | `silpheed` | The original orchestral/mallet-percussion composer this tool started as. Evolving per-bar melody (a fresh lead shape every bar, not a repeating hook), 8th-note arp, syncopated kick + 2-and-4 snare backbeat, wide orchestral/mallet-percussion/organ instrument pools. |
+| 1 (default) | `kraftwerk` | Motorik/sequenced electronic. Unbroken 16th-note arp sequence, four-on-the-floor bass locked to the kick, a short repeating lead motif (same shape for a whole 4-bar chunk). Drums drawn from `drum_patterns.py`'s "motorik" pool. |
+| 2 | `daftpunk` | Syncopated house/funk electronic. The arp plays short off-beat chord stabs (explicitly cut off, not left ringing) instead of a continuous sequence, bass is a syncopated 16th-note funk pattern, drums drawn from `drum_patterns.py`'s "groove" pool. |
+
+Styles 1 and 2 share instrument pools (OPL2 synth lead/bass/pad GM ranges)
+and most of the chunk structure; style 0 uses the wider orchestral pools
+instead. Each style is its own `_generate_chunk_*` function in
+`compose.py`, so adding a style 3 later doesn't mean threading more
+branches through a shared one -- see that module's docstring.
 
 `--export-vgm` **overwrites the existing `music/RESOURCE.NNN.vgm` in
 place** (equivalent to Furnace's File > Export > VGM) — it's meant for once
@@ -148,11 +167,11 @@ seeded by `--seed` so a run is reproducible but varies a lot between seeds:
   (`RPTracker/src/instruments.c`, parsed live so this tool never goes stale
   against it). All 256 are embedded in every `.fur` file so you can swap any
   instrument by hand in Furnace; the generator itself picks 7 of them (one
-  per channel), but from narrow *synth-only* GM-program ranges specifically
-  (`instruments.py`'s `lead_synth`/`bass_synth`/`pad_synth`: GM's synth
-  lead/synth bass/synth pad programs), not the wider
-  orchestral/mallet-percussion pools an earlier, Silpheed-inspired version
-  of this tool used -- plus a fixed kick/snare/hat kit.
+  per channel). Styles 1/2 pick from narrow *synth-only* GM-program ranges
+  (`instruments.py`'s `lead_synth`/`bass_synth`/`pad_synth`); style 0 picks
+  from the wider orchestral/mallet-percussion pools this tool originally
+  used (`lead`/`bass`/`pad`/`pluck`/`keys`) -- plus a fixed kick/snare/hat
+  kit either way.
 - **Structure**: a short intro layers instruments in one at a time — bass,
   pad, arpeggio, lead, and (if the track uses drums) drums — in a **randomized
   order** per song, so sometimes a track opens with just the drums, sometimes
@@ -162,15 +181,20 @@ seeded by `--seed` so a run is reproducible but varies a lot between seeds:
   2-3 minutes. The outro then drops layers back out in reverse of however
   they came in, ending on whichever layer opened the track — so the loop
   point (VGM tracks loop) feels continuous instead of cutting to silence.
-- **Motorik/sequenced, not evolving**: unlike a typical arrangement where
-  parts vary bar to bar, the arp runs an *unbroken 16th-note sequence*
-  cycling through the current chord (the Kraftwerk signature), and the lead
-  picks one short motif shape for an *entire 4-bar chunk* rather than
-  re-rolling it every bar -- both read as repeating, sequenced hooks/loops,
-  not a melody that keeps wandering. Drums are equally mechanical:
-  four-on-the-floor kick on every beat, snare on 2 & 4, unbroken 16th-note
-  hats -- no syncopation or fills, deliberately, since the steady "machine"
-  pulse is the point.
+- **Motorik/sequenced (styles 1/2), not evolving (style 0)**: styles 1/2
+  pick one arp mode (an unbroken 16th-note sequence for kraftwerk, short
+  off-beat chord stabs for daftpunk) and one lead motif shape *per 4-bar
+  chunk*, not re-rolled every bar, so they read as repeating, sequenced
+  hooks/loops. Style 0 re-rolls the lead's shape every bar instead, an
+  evolving melody rather than a loop.
+- **Drums** (styles 1/2) are real named beats transcribed from *Pocket
+  Operations* (Teenage Engineering's drum-pattern reference book) --
+  `musicgen/drum_patterns.py` -- picked once per chunk from a "motorik"
+  pool (kraftwerk) or "groove" pool (daftpunk), plus the same light per-bar
+  touches regardless of which pattern was picked: an occasional syncopated
+  kick push, hat drop-outs, and a snare roll on the chunk's last bar. Style
+  0's drums are a simpler hand-rolled syncopated-kick + 2-and-4-snare
+  backbeat, not pattern-bank-driven.
 - **Chord progressions** are drawn from a 3-tier bank (simple → harmonically
   restless), weighted by the track's `intensity`. Title and early levels stay
   almost entirely in the simple tier; boss fights and late levels pull
@@ -187,6 +211,12 @@ seeded by `--seed` so a run is reproducible but varies a lot between seeds:
   volume column is 0-63, not 0-127 like most of Furnace's UI implies --
   confirmed directly against Furnace's own source
   (`DIV_CMD_GET_VOLMAX`) -- so if you hand-tune these, stay in that range.
+- **No hanging notes across silent sections**: every channel's "this role
+  isn't playing right now" pattern (`compose.py`'s `EMPTY_PATTERN_IDX`)
+  starts with an explicit note-off, not just an empty row. Without that, a
+  note still ringing from the previous, non-empty pattern would keep
+  holding right through the "silent" one, since nothing ever told it to
+  stop.
 
 None of this is a finished composition — it's a structured, genre-appropriate
 starting sketch meant to be opened in Furnace and hand-edited from there.
@@ -200,7 +230,8 @@ tools/
     furwriter.py           # low-level .fur binary writer (see below)
     instruments.py         # parses RPTracker's gm_bank, GM-program-range role lookup
     tracks.py               # the 9-track registry + MoodPreset per track
-    compose.py              # the procedural composer described above
+    compose.py              # the procedural composer(s) described above
+    drum_patterns.py         # Pocket Operations-transcribed drum pattern bank (styles 1/2)
 music/
   fur/
     RESOURCE.NNN.fur        # generated output, one per track slot
@@ -237,16 +268,16 @@ appear as long as Furnace is exporting plain OPL2.
 
 This tool started out inspired by the real Silpheed (1989) DOS score
 (orchestral/mallet-percussion-heavy, per a Roland MT-32 MIDI capture
-studied for structure/statistics only), and a later branch tried training a
-small VAE on that same MIDI to generate melodies directly -- see
-`tools/musicgen_vae/README.md` on `VAE-music-generation` for why that
-didn't work out (a real data-scale ceiling, not a fixable bug). The current
-version is a deliberate pivot away from both: fully procedural and
-rule-based (no training data at all), leaning electronic/synth
-(Kraftwerk-ish: minimal, motorik, arpeggiated) rather than orchestral --
-both because that genre is much more naturally rule-describable than "write
-a convincing melody," and because it suits the game's high tempo and OPL2's
-FM-synth lineage. `instruments.py`'s `lead_synth`/`bass_synth`/`pad_synth`
-GM ranges and `compose.py`'s motorik drum/sequenced-arp rules reflect that;
-the original wider orchestral instrument pools (`lead`/`bass`/`pad`/`pluck`/
-`keys`) are still defined in `instruments.py` but unused by `compose.py` now.
+studied for structure/statistics only) -- that's `--style 0` now. A later
+branch tried training a small VAE on that same MIDI to generate melodies
+directly -- see `tools/musicgen_vae/README.md` on `VAE-music-generation`
+for why that didn't work out (a real data-scale ceiling, not a fixable
+bug). The project then pivoted to fully procedural, rule-based electronic
+styles instead (no training data at all) -- both because that genre family
+is much more naturally rule-describable than "write a convincing melody,"
+and because it suits the game's high tempo and OPL2's FM-synth lineage --
+which is `--style 1` (kraftwerk) and `--style 2` (daftpunk) now.
+`drum_patterns.py`'s beats are transcribed directly from *Pocket
+Operations* (Teenage Engineering's drum-machine-pattern reference book),
+rather than hand-rolled, once a single hand-rolled motorik beat turned out
+to feel too static repeated for a whole song.
