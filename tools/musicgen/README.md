@@ -30,11 +30,41 @@ python3 tools/generate_music.py --track boss --export-vgm  # also render straigh
 
 Output goes to `music/fur/RESOURCE.NNN.fur`. Every run prints the seed it
 used — save it if you like a particular roll, then pass `--seed` next time
-to get the exact same track back (or omit it to roll the dice again).
+to get the exact same track back (or omit it to roll the dice again). Every
+run also prints a ready-to-copy `regenerate:` command with `--seed`,
+`--vol`, and `--patch` all filled in from what actually got generated (see
+below) — even if you didn't pass `--vol`/`--patch` yourself, so you always
+have an exact, reproducible baseline to start hand-tuning from.
 
 `--track` accepts either the resource id (`001`, `RESOURCE.001`) or a
 friendly alias (`title`, `boss`, `level1`, ...) — see `--list` for the full
 table.
+
+## Hand-tuning a roll: `--vol` / `--patch`
+
+Once a seed's *composition* (melody, progression, arrangement) is one you
+like, `--vol` and `--patch` let you adjust the *mix* without re-rolling
+anything else:
+
+```sh
+python3 tools/generate_music.py --track boss --seed 1234 \
+    --vol 0,0,1,2,-3,-1,2 --patch 52,53,27,FD,FE,FF,5E
+```
+
+Both take 7 comma-separated values in **lead, arp, bass, pad, kick, snare,
+hat** order (`compose.py`'s `ROLE_TO_CHANNEL` key order):
+
+- `--vol`: a per-role integer offset from that role's base volume (can be
+  negative), still clamped into OPL2's 0-63 pattern-volume range.
+- `--patch`: a 2-digit hex instrument index (`00`-`FF`) into RPTracker's
+  256-patch bank, replacing whichever instrument that role would otherwise
+  have been assigned. Not restricted to the role's usual synth-only pool —
+  any of the 256 patches works, if you want to experiment.
+
+Both only make sense with a single `--track`, not `--track all`. Changing
+`--vol`/`--patch` never perturbs the rest of the composition for a given
+`--seed` — the same chord progression, arrangement, and melodic content
+comes out either way, only the mix/instrumentation changes.
 
 `--export-vgm` **overwrites the existing `music/RESOURCE.NNN.vgm` in
 place** (equivalent to Furnace's File > Export > VGM) — it's meant for once
