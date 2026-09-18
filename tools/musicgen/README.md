@@ -1,11 +1,17 @@
 # RPStarHopper music generator
 
-Procedurally composes original, royalty-free OPL2 chiptune tracks —
-inspired by the DOS/OPL2 version of *Silpheed* — for each of RPStarHopper's
-music slots, and writes them straight out as [Furnace](https://github.com/tildearrow/furnace)
+Procedurally composes original, royalty-free, Kraftwerk-leaning
+electronic/synth OPL2 tracks for each of RPStarHopper's music slots, and
+writes them straight out as [Furnace](https://github.com/tildearrow/furnace)
 tracker `.fur` project files. Open the result in Furnace to audition and
 tweak by hand; pass `--export-vgm` to also render straight to
 `music/RESOURCE.NNN.vgm` using Furnace's own headless exporter.
+
+(An earlier version of this tool leaned orchestral/Silpheed-inspired, and a
+separate attempt to generate melodies with a small VAE trained on real
+Silpheed MIDI didn't pan out -- see `tools/musicgen_vae/README.md` on the
+`VAE-music-generation` branch for that writeup. This is a from-scratch
+pivot to a fully procedural, rule-based electronic direction instead.)
 
 Without `--export-vgm`, this tool never touches `music/RESOURCE.NNN.vgm` or
 `CMakeLists.txt` — the workflow stops at handing you an editable `.fur`
@@ -112,9 +118,11 @@ seeded by `--seed` so a run is reproducible but varies a lot between seeds:
   (`RPTracker/src/instruments.c`, parsed live so this tool never goes stale
   against it). All 256 are embedded in every `.fur` file so you can swap any
   instrument by hand in Furnace; the generator itself picks 7 of them (one
-  per channel) using GM-program-range heuristics per role -- lead, bass,
-  pad, an arpeggio voice (mallet percussion or keys), and a fixed kick/snare/
-  hat kit.
+  per channel), but from narrow *synth-only* GM-program ranges specifically
+  (`instruments.py`'s `lead_synth`/`bass_synth`/`pad_synth`: GM's synth
+  lead/synth bass/synth pad programs), not the wider
+  orchestral/mallet-percussion pools an earlier, Silpheed-inspired version
+  of this tool used -- plus a fixed kick/snare/hat kit.
 - **Structure**: a short intro layers instruments in one at a time — bass,
   pad, arpeggio, lead, and (if the track uses drums) drums — in a **randomized
   order** per song, so sometimes a track opens with just the drums, sometimes
@@ -124,6 +132,15 @@ seeded by `--seed` so a run is reproducible but varies a lot between seeds:
   2-3 minutes. The outro then drops layers back out in reverse of however
   they came in, ending on whichever layer opened the track — so the loop
   point (VGM tracks loop) feels continuous instead of cutting to silence.
+- **Motorik/sequenced, not evolving**: unlike a typical arrangement where
+  parts vary bar to bar, the arp runs an *unbroken 16th-note sequence*
+  cycling through the current chord (the Kraftwerk signature), and the lead
+  picks one short motif shape for an *entire 4-bar chunk* rather than
+  re-rolling it every bar -- both read as repeating, sequenced hooks/loops,
+  not a melody that keeps wandering. Drums are equally mechanical:
+  four-on-the-floor kick on every beat, snare on 2 & 4, unbroken 16th-note
+  hats -- no syncopation or fills, deliberately, since the steady "machine"
+  pulse is the point.
 - **Chord progressions** are drawn from a 3-tier bank (simple → harmonically
   restless), weighted by the track's `intensity`. Title and early levels stay
   almost entirely in the simple tier; boss fights and late levels pull
@@ -132,9 +149,14 @@ seeded by `--seed` so a run is reproducible but varies a lot between seeds:
   contrasting section — a real "raise the stakes" moment tied to boss
   fights and late levels, not just a different melody in the same key.
 - **Tempo** is BPM-driven (not an arbitrary tracker "speed" value) — mostly
-  116-132 BPM, calibrated against the real Silpheed DOS score (see "Where
-  this comes from" below), with the game-over track deliberately slower
-  (96 BPM).
+  124-140 BPM (house/techno territory, on the high-tempo side to match the
+  game's pace), with the game-over track deliberately slower (100 BPM).
+- **Mixing**: each role has a fixed volume level (`compose.py`'s
+  `ROLE_VOLUME`) so the lead sits up front and the pad/hats sit underneath
+  it rather than everything playing at the same raw level. OPL2's pattern
+  volume column is 0-63, not 0-127 like most of Furnace's UI implies --
+  confirmed directly against Furnace's own source
+  (`DIV_CMD_GET_VOLMAX`) -- so if you hand-tune these, stay in that range.
 
 None of this is a finished composition — it's a structured, genre-appropriate
 starting sketch meant to be opened in Furnace and hand-edited from there.
@@ -183,13 +205,18 @@ appear as long as Furnace is exporting plain OPL2.
 
 ## Where this comes from
 
-Calibrated by studying (structure/statistics only, never transcribing
-melodies) a Roland MT-32 MIDI capture of the real Silpheed DOS score: it
-confirmed a constant ~120 BPM throughout with mood coming from
-instrumentation and density rather than tempo swings, real song lengths in
-the 1:24-3:18 range (hence this tool's ~2-3 minute target), and a much
-richer instrumentation palette than a simple synth-lead/bass/pad trio —
-heavy layered use of mallet percussion (celesta, glockenspiel, vibraphone,
-dulcimer), strings, and organs, which is why `instruments.py`'s role pools
-include those families and why there's a dedicated sustained pad/harmony
-channel.
+This tool started out inspired by the real Silpheed (1989) DOS score
+(orchestral/mallet-percussion-heavy, per a Roland MT-32 MIDI capture
+studied for structure/statistics only), and a later branch tried training a
+small VAE on that same MIDI to generate melodies directly -- see
+`tools/musicgen_vae/README.md` on `VAE-music-generation` for why that
+didn't work out (a real data-scale ceiling, not a fixable bug). The current
+version is a deliberate pivot away from both: fully procedural and
+rule-based (no training data at all), leaning electronic/synth
+(Kraftwerk-ish: minimal, motorik, arpeggiated) rather than orchestral --
+both because that genre is much more naturally rule-describable than "write
+a convincing melody," and because it suits the game's high tempo and OPL2's
+FM-synth lineage. `instruments.py`'s `lead_synth`/`bass_synth`/`pad_synth`
+GM ranges and `compose.py`'s motorik drum/sequenced-arp rules reflect that;
+the original wider orchestral instrument pools (`lead`/`bass`/`pad`/`pluck`/
+`keys`) are still defined in `instruments.py` but unused by `compose.py` now.

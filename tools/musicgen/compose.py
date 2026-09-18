@@ -1,10 +1,22 @@
-"""Procedural, seeded composition of a Silpheed/OPL2-inspired track.
+"""Procedural, seeded composition of a Kraftwerk-leaning electronic/synth
+track on OPL2.
 
 Not a general music engine -- a small set of rules (scale + chord
 progressions + fixed channel roles, arranged into an intro/theme/bridge/
 outro structure) that produces a several-minute, layered, genre-appropriate
 sketch every time it's run with a given seed. It's meant to be a starting
 point to audition and hand-edit in Furnace, not a finished composition.
+
+Motorik/sequenced, not orchestral: the arp channel runs an unbroken
+16th-note sequence (the Kraftwerk signature), drums are a steady
+four-on-the-floor kick + 2-and-4 snare + unbroken 16th-note hats (no
+syncopation/fills -- the "machine" pulse is the point), the bass is a
+driving quarter-note pulse locked to the kick, and the lead is a short
+repeating motif (same shape for an entire 4-bar chunk, not re-rolled every
+bar) rather than an evolving melody. Instruments are drawn from OPL2's
+synth lead/bass/pad GM ranges specifically (see instruments.py's
+`lead_synth`/`bass_synth`/`pad_synth`), not the wider
+orchestral/mallet-percussion pools an earlier version of this tool used.
 
 Arrangement approach: the song is built from a handful of 4-bar "chunks" of
 real musical content (two takes on the A progression, two on the B
@@ -48,6 +60,14 @@ SCALES = {
 # channels (indices 0-6). Channels 7-8 are reserved for the game's own sound
 # effects and must never be touched by generated music.
 ROLE_TO_CHANNEL = {"lead": 0, "arp": 1, "bass": 2, "pad": 6, "kick": 3, "snare": 4, "hat": 5}
+
+# OPL2's pattern volume column is 0-63 (63 = instrument's own baked-in
+# level, unattenuated; 0 = silent -- see Furnace's DIV_CMD_GET_VOLMAX for a
+# normal FM channel, which returns 63, not the 0-127 most other columns in
+# Furnace's UI suggest). A rough mix: lead upfront, bass/arp driving but
+# under it, pad minimal support, drums punchy but not burying the sequencer.
+ROLE_VOLUME = {"lead": 56, "arp": 48, "bass": 58, "pad": 40, "kick": 63, "snare": 54, "hat": 38}
+
 CHANNEL_COUNT = 9
 MUSIC_CHANNELS = 7
 EFFECT_CHANNELS = {7, 8}
@@ -136,8 +156,8 @@ def _pick_instrument(rng: random.Random, bank: List[FurInstrument], role: str) -
     return rng.choice(usable or candidates)
 
 
-def _set(rows: Dict[int, RowCell], row: int, note: int, ins: int) -> None:
-    rows[row] = RowCell(note=note, ins=ins)
+def _set(rows: Dict[str, Dict[int, RowCell]], role: str, row: int, note: int, ins: Dict[str, int]) -> None:
+    rows[role][row] = RowCell(note=note, ins=ins[role], vol=ROLE_VOLUME[role])
 
 
 def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
@@ -146,39 +166,54 @@ def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
     roles actually get heard in the final song is decided later, per
     section, by the arrangement plan -- this always writes all of them.
     `root` is passed in separately from mood.key_root so a chunk can be
-    generated in a modulated key for high-intensity tracks."""
+    generated in a modulated key for high-intensity tracks.
+
+    Motorik/Kraftwerk-leaning: the lead's `shape` and the arp's `arp_kind`
+    are each picked once for the *whole* chunk, not re-rolled every bar --
+    a repeating, sequenced hook/pattern is the point, not a melody that
+    keeps evolving bar to bar."""
     scale = mood.scale
     rows: Dict[str, Dict[int, RowCell]] = {role: {} for role in ROLE_TO_CHANNEL}
+
+    shape = rng.choice(["ascend", "descend", "static", "skip", "call_response"])
+    arp_kind = rng.choice(["up", "updown", "alternate"])
 
     for bar in range(CHUNK_BARS):
         base = bar * ROWS_PER_BAR
         degree = progression[bar % len(progression)]
         chord_tones = [degree, degree + 2, degree + 4]  # root/3rd/5th, scale degrees
 
-        # bass: root pulse on beat 1 and beat 3, occasional octave-up passing note
-        _set(rows["bass"], base + 0, _scale_note(root, scale, degree, mood.bass_octave), ins["bass"])
-        _set(rows["bass"], base + 2 * ROWS_PER_BEAT, _scale_note(root, scale, degree, mood.bass_octave), ins["bass"])
-        if rng.random() < 0.3:
-            _set(rows["bass"], base + 3 * ROWS_PER_BEAT,
-                 _scale_note(root, scale, degree, mood.bass_octave + 1), ins["bass"])
+        # bass: driving quarter-note pulse on every beat (four-on-the-floor,
+        # locked to the kick), root throughout except a lifted 4th beat for
+        # forward momentum into the next bar
+        for i in range(BEATS_PER_BAR):
+            beat_degree = degree if i < BEATS_PER_BAR - 1 else degree + 2
+            _set(rows, "bass", base + i * ROWS_PER_BEAT,
+                 _scale_note(root, scale, beat_degree, mood.bass_octave), ins)
 
-        # arp: 8th-note chord-tone cycle -- driving OPL2 texture, not 16th-note spam
-        cycle = chord_tones + [chord_tones[1]]
-        for i, r in enumerate(range(0, ROWS_PER_BAR, 2)):
-            _set(rows["arp"], base + r, _scale_note(root, scale, cycle[i % len(cycle)], mood.arp_octave), ins["arp"])
+        # arp: relentless 16th-note sequence -- the Kraftwerk signature.
+        # arp_kind is fixed for the whole chunk; only which chord tones it
+        # cycles through changes bar to bar (following the progression).
+        if arp_kind == "up":
+            cycle = chord_tones
+        elif arp_kind == "updown":
+            cycle = chord_tones + chord_tones[-2:0:-1]
+        else:  # alternate: bounce between root and each upper tone
+            cycle = [degree, chord_tones[1], degree, chord_tones[2]]
+        for r in range(ROWS_PER_BAR):
+            _set(rows, "arp", base + r, _scale_note(root, scale, cycle[r % len(cycle)], mood.arp_octave), ins)
 
         # pad: one sustained chord tone per bar (root, alternating up to the
-        # 5th every other bar) -- a held organ/string-style harmony layer
-        # under the busier arp, the way the real score layers organs/strings
-        # under mallet-percussion comping.
+        # 5th every other bar) -- a minimal held synth-pad layer under the
+        # sequencer, not the focus.
         pad_degree = chord_tones[0] if bar % 2 == 0 else chord_tones[2]
-        _set(rows["pad"], base + 0, _scale_note(root, scale, pad_degree, mood.arp_octave - 1), ins["pad"])
+        _set(rows, "pad", base + 0, _scale_note(root, scale, pad_degree, mood.arp_octave - 1), ins)
 
-        # lead: quarter-note motif with occasional 8th-note fills and rests
-        shape = rng.choice(["ascend", "descend", "static", "skip", "call_response"])
+        # lead: quarter-note hook, same shape all chunk long so it reads as
+        # a repeating motif/loop rather than a wandering melody
         beat_rows = [i * ROWS_PER_BEAT for i in range(BEATS_PER_BAR)]
         for i, r in enumerate(beat_rows):
-            if rng.random() < 0.12:
+            if rng.random() < 0.06:
                 continue
             if shape == "ascend":
                 deg = degree + i
@@ -190,21 +225,19 @@ def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
                 deg = chord_tones[(i * 2) % len(chord_tones)]
             else:  # call_response
                 deg = degree if i % 2 == 0 else degree + 4
-            _set(rows["lead"], base + r, _scale_note(root, scale, deg, mood.lead_octave), ins["lead"])
-            if rng.random() < 0.25 and r + 2 < ROWS_PER_BAR:
+            _set(rows, "lead", base + r, _scale_note(root, scale, deg, mood.lead_octave), ins)
+            if rng.random() < 0.15 and r + 2 < ROWS_PER_BAR:
                 deg2 = deg + (1 if rng.random() < 0.5 else -1)
-                _set(rows["lead"], base + r + 2, _scale_note(root, scale, deg2, mood.lead_octave), ins["lead"])
+                _set(rows, "lead", base + r + 2, _scale_note(root, scale, deg2, mood.lead_octave), ins)
 
-        # drums: kick on 1 & 3 (+ occasional syncopated push), snare backbeat on 2 & 4, 8th-note hats
-        _set(rows["kick"], base + 0, note_value(3, 0), ins["kick"])
-        _set(rows["kick"], base + 2 * ROWS_PER_BEAT, note_value(3, 0), ins["kick"])
-        if rng.random() < 0.2:
-            _set(rows["kick"], base + 2 * ROWS_PER_BEAT - 2, note_value(3, 0), ins["kick"])
-        _set(rows["snare"], base + 1 * ROWS_PER_BEAT, note_value(3, 0), ins["snare"])
-        _set(rows["snare"], base + 3 * ROWS_PER_BEAT, note_value(3, 0), ins["snare"])
-        for r in range(0, ROWS_PER_BAR, 2):
-            if rng.random() < 0.9:
-                _set(rows["hat"], base + r, note_value(3, 0), ins["hat"])
+        # drums: motorik -- four-on-the-floor kick every beat, snare
+        # backbeat on 2 & 4, unbroken 16th-note hats (the "machine" pulse)
+        for i in range(BEATS_PER_BAR):
+            _set(rows, "kick", base + i * ROWS_PER_BEAT, note_value(3, 0), ins)
+        _set(rows, "snare", base + 1 * ROWS_PER_BEAT, note_value(3, 0), ins)
+        _set(rows, "snare", base + 3 * ROWS_PER_BEAT, note_value(3, 0), ins)
+        for r in range(ROWS_PER_BAR):
+            _set(rows, "hat", base + r, note_value(3, 0), ins)
 
     return rows
 
@@ -296,10 +329,10 @@ def generate_track(name: str, mood: MoodPreset, seed: int, bank: List[FurInstrum
     rng = random.Random(seed)
 
     ins: Dict[str, int] = {
-        "lead": _pick_instrument(rng, bank, "lead"),
-        "arp": _pick_instrument(rng, bank, rng.choice(["pluck", "keys"])),
-        "bass": _pick_instrument(rng, bank, "bass"),
-        "pad": _pick_instrument(rng, bank, "pad"),
+        "lead": _pick_instrument(rng, bank, "lead_synth"),
+        "arp": _pick_instrument(rng, bank, "lead_synth"),
+        "bass": _pick_instrument(rng, bank, "bass_synth"),
+        "pad": _pick_instrument(rng, bank, "pad_synth"),
     }
     if mood.use_drums:
         kick_ins, snare_ins, hat_ins = role_candidates("perc")  # Bass Drum, Snare, Hat (fixed order)

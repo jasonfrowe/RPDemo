@@ -115,6 +115,13 @@ ROLE_RANGES = {
     "keys": [(0, 1), (4, 7)],                        # piano, electric piano, harpsichord, clavinet
     "brass_stab": [(56, 63)],                        # trumpet..synth brass
     "perc": [(253, 255)],                            # RPTracker's custom kit: Bass Drum/Snare/Hat
+
+    # Narrower, purely-synth pools for the electronic/Kraftwerk-leaning
+    # composer (compose.py's motorik drums + sequenced arp/lead) -- deliberately
+    # exclude the orchestral/acoustic instruments the ranges above mix in.
+    "lead_synth": [(80, 87)],                        # GM Lead 1-8: square, sawtooth, calliope, chiff, charang, voice, fifths, bass+lead
+    "bass_synth": [(38, 39)],                        # GM Synth Bass 1 & 2
+    "pad_synth": [(88, 95)],                          # GM Pad 1-8: new age, warm, polysynth, choir, bowed, metallic, halo, sweep
 }
 
 
