@@ -569,14 +569,21 @@ def generate_track(name: str, mood: MoodPreset, seed: int, bank: List[FurInstrum
         channels=CHANNEL_COUNT,
     )
     song.orders = [[] for _ in range(CHANNEL_COUNT)]
-    for ch in range(CHANNEL_COUNT):
-        # an explicit note-off, not just an empty pattern -- otherwise a
-        # channel that was ringing a note in the previous (non-empty)
-        # pattern keeps holding it right through this "silent" one, since
-        # nothing ever tells it to stop.
-        song.patterns[(ch, EMPTY_PATTERN_IDX)] = {0: RowCell(note=NOTE_OFF)}
-
     unused_channels = set(range(CHANNEL_COUNT)) - set(ROLE_TO_CHANNEL.values())
+    for ch in range(CHANNEL_COUNT):
+        if ch in unused_channels:
+            # channels 7/8 are never touched by generated music at all
+            # (reserved for the game's own sound effects) -- leave their
+            # pattern genuinely empty rather than writing a note-off into a
+            # channel this tool has no business speaking on.
+            song.patterns[(ch, EMPTY_PATTERN_IDX)] = {}
+        else:
+            # an explicit note-off, not just an empty pattern -- otherwise a
+            # channel that was ringing a note in the previous (non-empty)
+            # pattern keeps holding it right through this "silent" one,
+            # since nothing ever tells it to stop.
+            song.patterns[(ch, EMPTY_PATTERN_IDX)] = {0: RowCell(note=NOTE_OFF)}
+
     for section in _plan_sections(rng, mood):
         pidx = pattern_idx_by_key[section.chunk_key]
         for role, ch in ROLE_TO_CHANNEL.items():
