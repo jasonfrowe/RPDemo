@@ -65,8 +65,17 @@ ROLE_TO_CHANNEL = {"lead": 0, "arp": 1, "bass": 2, "pad": 6, "kick": 3, "snare":
 # level, unattenuated; 0 = silent -- see Furnace's DIV_CMD_GET_VOLMAX for a
 # normal FM channel, which returns 63, not the 0-127 most other columns in
 # Furnace's UI suggest). A rough mix: lead upfront, bass/arp driving but
-# under it, pad minimal support, drums punchy but not burying the sequencer.
-ROLE_VOLUME = {"lead": 56, "arp": 48, "bass": 58, "pad": 40, "kick": 63, "snare": 54, "hat": 38}
+# under it, pad present (not buried), drums punchy but not burying the
+# sequencer.
+ROLE_VOLUME = {"lead": 56, "arp": 48, "bass": 58, "pad": 48, "kick": 63, "snare": 54, "hat": 38}
+
+# Small per-note random jitter around each role's base volume (still
+# clamped into 0-63) -- without this every note in a role plays at
+# *exactly* the same level, which reads as stiff/mechanical rather than
+# performed. Hats get the widest jitter (loose hi-hat dynamics are one of
+# the most audible "human" touches in electronic music); kick stays
+# tightest since it's the track's anchor and shouldn't visibly wander.
+ROLE_VOLUME_JITTER = {"lead": 5, "arp": 5, "bass": 4, "pad": 4, "kick": 2, "snare": 4, "hat": 7}
 
 CHANNEL_COUNT = 9
 MUSIC_CHANNELS = 7
@@ -156,8 +165,11 @@ def _pick_instrument(rng: random.Random, bank: List[FurInstrument], role: str) -
     return rng.choice(usable or candidates)
 
 
-def _set(rows: Dict[str, Dict[int, RowCell]], role: str, row: int, note: int, ins: Dict[str, int]) -> None:
-    rows[role][row] = RowCell(note=note, ins=ins[role], vol=ROLE_VOLUME[role])
+def _set(rng: random.Random, rows: Dict[str, Dict[int, RowCell]], role: str, row: int, note: int,
+         ins: Dict[str, int]) -> None:
+    jitter = ROLE_VOLUME_JITTER[role]
+    vol = ROLE_VOLUME[role] + rng.randint(-jitter, jitter)
+    rows[role][row] = RowCell(note=note, ins=ins[role], vol=max(0, min(63, vol)))
 
 
 def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
@@ -168,15 +180,21 @@ def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
     `root` is passed in separately from mood.key_root so a chunk can be
     generated in a modulated key for high-intensity tracks.
 
-    Motorik/Kraftwerk-leaning: the lead's `shape` and the arp's `arp_kind`
-    are each picked once for the *whole* chunk, not re-rolled every bar --
-    a repeating, sequenced hook/pattern is the point, not a melody that
-    keeps evolving bar to bar."""
+    Motorik/Kraftwerk-leaning: the lead's `shape`, the arp's `arp_kind`, and
+    the drums' `hat_style` are each picked once for the *whole* chunk, not
+    re-rolled every bar -- a repeating, sequenced hook/pattern is the point,
+    not a melody/beat that keeps evolving bar to bar. Since a song strings
+    together up to 4 independently-generated chunks (A1/A2/B1/B2), each
+    with its own random shape/kind/style, sections still read as distinct
+    from each other -- on top of that, per-bar touches (kick pushes, hat
+    drop-outs, an end-of-chunk snare roll) keep even repeats of the *same*
+    chunk from sounding like a perfect, static loop."""
     scale = mood.scale
     rows: Dict[str, Dict[int, RowCell]] = {role: {} for role in ROLE_TO_CHANNEL}
 
     shape = rng.choice(["ascend", "descend", "static", "skip", "call_response"])
     arp_kind = rng.choice(["up", "updown", "alternate"])
+    hat_style = rng.choice(["sixteenth", "eighth", "loose_sixteenth"])
 
     for bar in range(CHUNK_BARS):
         base = bar * ROWS_PER_BAR
@@ -188,7 +206,7 @@ def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
         # forward momentum into the next bar
         for i in range(BEATS_PER_BAR):
             beat_degree = degree if i < BEATS_PER_BAR - 1 else degree + 2
-            _set(rows, "bass", base + i * ROWS_PER_BEAT,
+            _set(rng, rows, "bass", base + i * ROWS_PER_BEAT,
                  _scale_note(root, scale, beat_degree, mood.bass_octave), ins)
 
         # arp: relentless 16th-note sequence -- the Kraftwerk signature.
@@ -201,13 +219,13 @@ def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
         else:  # alternate: bounce between root and each upper tone
             cycle = [degree, chord_tones[1], degree, chord_tones[2]]
         for r in range(ROWS_PER_BAR):
-            _set(rows, "arp", base + r, _scale_note(root, scale, cycle[r % len(cycle)], mood.arp_octave), ins)
+            _set(rng, rows, "arp", base + r, _scale_note(root, scale, cycle[r % len(cycle)], mood.arp_octave), ins)
 
         # pad: one sustained chord tone per bar (root, alternating up to the
         # 5th every other bar) -- a minimal held synth-pad layer under the
         # sequencer, not the focus.
         pad_degree = chord_tones[0] if bar % 2 == 0 else chord_tones[2]
-        _set(rows, "pad", base + 0, _scale_note(root, scale, pad_degree, mood.arp_octave - 1), ins)
+        _set(rng, rows, "pad", base + 0, _scale_note(root, scale, pad_degree, mood.arp_octave - 1), ins)
 
         # lead: quarter-note hook, same shape all chunk long so it reads as
         # a repeating motif/loop rather than a wandering melody
@@ -225,19 +243,39 @@ def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
                 deg = chord_tones[(i * 2) % len(chord_tones)]
             else:  # call_response
                 deg = degree if i % 2 == 0 else degree + 4
-            _set(rows, "lead", base + r, _scale_note(root, scale, deg, mood.lead_octave), ins)
+            _set(rng, rows, "lead", base + r, _scale_note(root, scale, deg, mood.lead_octave), ins)
             if rng.random() < 0.15 and r + 2 < ROWS_PER_BAR:
                 deg2 = deg + (1 if rng.random() < 0.5 else -1)
-                _set(rows, "lead", base + r + 2, _scale_note(root, scale, deg2, mood.lead_octave), ins)
+                _set(rng, rows, "lead", base + r + 2, _scale_note(root, scale, deg2, mood.lead_octave), ins)
 
-        # drums: motorik -- four-on-the-floor kick every beat, snare
-        # backbeat on 2 & 4, unbroken 16th-note hats (the "machine" pulse)
+        # drums: motorik core (four-on-the-floor kick, snare on 2 & 4) with
+        # per-bar touches so it doesn't read as one static, machine-perfect
+        # loop: an occasional syncopated kick push, hat drop-outs sized to
+        # hat_style, and a snare roll on the chunk's last bar as a
+        # transition accent into whatever comes next.
+        drum_note = note_value(3, 0)
         for i in range(BEATS_PER_BAR):
-            _set(rows, "kick", base + i * ROWS_PER_BEAT, note_value(3, 0), ins)
-        _set(rows, "snare", base + 1 * ROWS_PER_BEAT, note_value(3, 0), ins)
-        _set(rows, "snare", base + 3 * ROWS_PER_BEAT, note_value(3, 0), ins)
-        for r in range(ROWS_PER_BAR):
-            _set(rows, "hat", base + r, note_value(3, 0), ins)
+            _set(rng, rows, "kick", base + i * ROWS_PER_BEAT, drum_note, ins)
+        if rng.random() < 0.15:
+            _set(rng, rows, "kick", base + 3 * ROWS_PER_BEAT + 2, drum_note, ins)
+
+        is_last_bar = bar == CHUNK_BARS - 1
+        if is_last_bar and rng.random() < 0.5:
+            for r in range(3 * ROWS_PER_BEAT, ROWS_PER_BAR):  # four-16th roll through beat 4
+                _set(rng, rows, "snare", base + r, drum_note, ins)
+        else:
+            _set(rng, rows, "snare", base + 1 * ROWS_PER_BEAT, drum_note, ins)
+            _set(rng, rows, "snare", base + 3 * ROWS_PER_BEAT, drum_note, ins)
+
+        if hat_style == "eighth":
+            hat_rows, hat_prob = range(0, ROWS_PER_BAR, 2), 0.95
+        elif hat_style == "loose_sixteenth":
+            hat_rows, hat_prob = range(ROWS_PER_BAR), 0.8
+        else:  # sixteenth
+            hat_rows, hat_prob = range(ROWS_PER_BAR), 0.94
+        for r in hat_rows:
+            if rng.random() < hat_prob:
+                _set(rng, rows, "hat", base + r, drum_note, ins)
 
     return rows
 
