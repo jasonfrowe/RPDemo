@@ -1,5 +1,6 @@
 #include "music.h"
 
+#include <rp6502.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -7,6 +8,22 @@
 #include "constants.h"
 #include "opl.h"
 #include "vgm.h"
+
+// The emulator's OPL register-write queue is drained by the host's audio
+// callback thread, which can take a variable amount of real time to start
+// pulling samples after the machine boots. opl_init()'s register-clear burst
+// plus the VGM's own startup instrument dump can together overflow that
+// queue before draining has begun, silently dropping writes (observed as a
+// channel that randomly never gets its instrument set up). Waiting a few
+// vsyncs here gives the audio thread time to start before the heavy bursts
+// land.
+static void wait_vsyncs(uint8_t count) {
+    while (count--) {
+        uint8_t v = RIA.vsync;
+        while (RIA.vsync == v) {
+        }
+    }
+}
 
 static vgm_player_t g_player;
 static const char *k_music_path = "ROM:RESOURCE.001.vgm";
@@ -27,6 +44,10 @@ void music_init(void) {
 
     opl_config(1, OPL_XRAM_ADDR);
     music_start_current();
+
+    // See wait_vsyncs() above: let the host audio thread get going before
+    // gameplay starts feeding it VGM commands on top of opl_init()'s burst.
+    wait_vsyncs(4);
 }
 
 bool music_set_track(const char *path) {
