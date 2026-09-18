@@ -22,6 +22,20 @@ Usage:
   python tools/generate_music.py --track boss
   python tools/generate_music.py --track boss --seed 1234
   python tools/generate_music.py --track boss --export-vgm
+
+Every run prints a "regenerate:" command with the exact --seed/--vol/--patch
+needed to reproduce that roll (instrument picks resolved to their actual
+hex values even if you didn't pass --patch) -- copy it and edit one number
+to hand-tune a roll you like without re-rolling the rest of the song:
+  python tools/generate_music.py --track boss --seed 1234 \\
+      --vol 0,0,1,2,-3,-1,2 --patch 52,53,27,FD,FE,FF,5E
+--vol/--patch take 7 comma-separated values in lead,arp,bass,pad,kick,
+snare,hat order (musicgen/compose.py's ROLE_TO_CHANNEL). --vol values are
+integer offsets from each role's base volume
+(can be negative; final volume is still clamped into OPL2's 0-63 range).
+--patch values are 2-digit hex instrument indices (00-FF) into RPTracker's
+256-patch bank, overriding whichever instrument that role would otherwise
+have picked. Both only make sense with a single --track, not --track all.
 """
 
 from __future__ import annotations
@@ -42,6 +56,36 @@ FURNACE_BIN = "/Applications/Furnace.app/Contents/MacOS/furnace"
 MUSIC_DIR = Path(__file__).resolve().parent.parent / "music"
 DEFAULT_OUT_DIR = MUSIC_DIR / "fur"
 DEFAULT_VGM_OUT_DIR = MUSIC_DIR
+
+# lead, arp, bass, pad, kick, snare, hat -- the canonical order --vol/--patch
+# values are given/printed in, taken directly from compose.py's role->channel
+# mapping so it can never drift out of sync with the actual role set.
+ROLE_ORDER = list(compose.ROLE_TO_CHANNEL.keys())
+
+
+def _parse_vol(spec: str) -> dict:
+    parts = [p.strip() for p in spec.split(",")]
+    if len(parts) != len(ROLE_ORDER):
+        raise ValueError(f"--vol needs {len(ROLE_ORDER)} comma-separated values ({','.join(ROLE_ORDER)}), got {len(parts)}")
+    try:
+        values = [int(p) for p in parts]
+    except ValueError:
+        raise ValueError(f"--vol values must be integers, got {spec!r}")
+    return dict(zip(ROLE_ORDER, values))
+
+
+def _parse_patch(spec: str) -> dict:
+    parts = [p.strip() for p in spec.split(",")]
+    if len(parts) != len(ROLE_ORDER):
+        raise ValueError(f"--patch needs {len(ROLE_ORDER)} comma-separated hex values ({','.join(ROLE_ORDER)}), got {len(parts)}")
+    try:
+        values = [int(p, 16) for p in parts]
+    except ValueError:
+        raise ValueError(f"--patch values must be 2-digit hex bytes (e.g. FD), got {spec!r}")
+    for v in values:
+        if not (0 <= v <= 255):
+            raise ValueError(f"--patch value {v:#x} out of range 00-FF")
+    return dict(zip(ROLE_ORDER, values))
 
 
 def _validate_with_furnace(path: Path) -> None:
@@ -91,8 +135,12 @@ def _export_vgm(fur_path: Path, vgm_path: Path) -> None:
 
 
 def generate_one(spec: "tracks.TrackSpec", seed: int, bank, out_dir: Path,
-                  export_vgm: bool = False, vgm_out_dir: Path = DEFAULT_VGM_OUT_DIR) -> Path:
-    song = compose.generate_track(name=f"{spec.resource} - {spec.description}", mood=spec.mood, seed=seed, bank=bank)
+                  export_vgm: bool = False, vgm_out_dir: Path = DEFAULT_VGM_OUT_DIR,
+                  vol_overrides: dict = None, patch_overrides: dict = None) -> Path:
+    song, ins = compose.generate_track(
+        name=f"{spec.resource} - {spec.description}", mood=spec.mood, seed=seed, bank=bank,
+        vol_overrides=vol_overrides, patch_overrides=patch_overrides,
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{spec.resource}.fur"
     write_fur(str(out_path), song)
@@ -100,6 +148,12 @@ def generate_one(spec: "tracks.TrackSpec", seed: int, bank, out_dir: Path,
     _validate_with_furnace(out_path)
     if export_vgm:
         _export_vgm(out_path, vgm_out_dir / f"{spec.resource}.vgm")
+
+    vol_overrides = vol_overrides or {}
+    vol_str = ",".join(str(vol_overrides.get(role, 0)) for role in ROLE_ORDER)
+    patch_str = ",".join(f"{ins[role]:02X}" for role in ROLE_ORDER)
+    print(f"  regenerate: python3 tools/generate_music.py --track {spec.aliases[0]} --seed {seed} "
+          f"--vol {vol_str} --patch {patch_str}")
     return out_path
 
 
@@ -120,6 +174,10 @@ def main() -> int:
                               "overwriting the existing placeholder)")
     parser.add_argument("--vgm-out-dir", default=str(DEFAULT_VGM_OUT_DIR),
                          help=f"VGM output directory, only used with --export-vgm (default: {DEFAULT_VGM_OUT_DIR})")
+    parser.add_argument("--vol", help=f"{len(ROLE_ORDER)} comma-separated integer volume offsets, "
+                                       f"{','.join(ROLE_ORDER)} order (only valid with a single --track)")
+    parser.add_argument("--patch", help=f"{len(ROLE_ORDER)} comma-separated hex instrument indices (00-FF), "
+                                         f"{','.join(ROLE_ORDER)} order (only valid with a single --track)")
     parser.add_argument("--list", action="store_true", help="list all tracks and exit")
     args = parser.parse_args()
 
@@ -136,6 +194,8 @@ def main() -> int:
     if args.track.lower() == "all":
         if args.seed is not None:
             parser.error("--seed only makes sense with a single --track, not --track all")
+        if args.vol or args.patch:
+            parser.error("--vol/--patch only make sense with a single --track, not --track all")
         bank = load_bank()
         for spec in tracks.TRACKS:
             generate_one(spec, random.randrange(2**31), bank, out_dir,
@@ -148,9 +208,17 @@ def main() -> int:
         parser.error(str(e))
         return 2
 
+    try:
+        vol_overrides = _parse_vol(args.vol) if args.vol else None
+        patch_overrides = _parse_patch(args.patch) if args.patch else None
+    except ValueError as e:
+        parser.error(str(e))
+        return 2
+
     seed = args.seed if args.seed is not None else random.randrange(2**31)
     bank = load_bank()
-    generate_one(spec, seed, bank, out_dir, export_vgm=args.export_vgm, vgm_out_dir=vgm_out_dir)
+    generate_one(spec, seed, bank, out_dir, export_vgm=args.export_vgm, vgm_out_dir=vgm_out_dir,
+                 vol_overrides=vol_overrides, patch_overrides=patch_overrides)
     return 0
 
 

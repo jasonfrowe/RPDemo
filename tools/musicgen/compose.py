@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from .furwriter import FurInstrument, FurSong, RowCell, note_value
 from .instruments import role_candidates
@@ -166,14 +166,14 @@ def _pick_instrument(rng: random.Random, bank: List[FurInstrument], role: str) -
 
 
 def _set(rng: random.Random, rows: Dict[str, Dict[int, RowCell]], role: str, row: int, note: int,
-         ins: Dict[str, int]) -> None:
+         ins: Dict[str, int], base_vol: Dict[str, int]) -> None:
     jitter = ROLE_VOLUME_JITTER[role]
-    vol = ROLE_VOLUME[role] + rng.randint(-jitter, jitter)
+    vol = base_vol[role] + rng.randint(-jitter, jitter)
     rows[role][row] = RowCell(note=note, ins=ins[role], vol=max(0, min(63, vol)))
 
 
 def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
-                     progression: List[int], root: int) -> Dict[str, Dict[int, RowCell]]:
+                     progression: List[int], root: int, base_vol: Dict[str, int]) -> Dict[str, Dict[int, RowCell]]:
     """Generates CHUNK_BARS (4) bars of real content for every role. Which
     roles actually get heard in the final song is decided later, per
     section, by the arrangement plan -- this always writes all of them.
@@ -207,7 +207,7 @@ def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
         for i in range(BEATS_PER_BAR):
             beat_degree = degree if i < BEATS_PER_BAR - 1 else degree + 2
             _set(rng, rows, "bass", base + i * ROWS_PER_BEAT,
-                 _scale_note(root, scale, beat_degree, mood.bass_octave), ins)
+                 _scale_note(root, scale, beat_degree, mood.bass_octave), ins, base_vol)
 
         # arp: relentless 16th-note sequence -- the Kraftwerk signature.
         # arp_kind is fixed for the whole chunk; only which chord tones it
@@ -219,13 +219,13 @@ def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
         else:  # alternate: bounce between root and each upper tone
             cycle = [degree, chord_tones[1], degree, chord_tones[2]]
         for r in range(ROWS_PER_BAR):
-            _set(rng, rows, "arp", base + r, _scale_note(root, scale, cycle[r % len(cycle)], mood.arp_octave), ins)
+            _set(rng, rows, "arp", base + r, _scale_note(root, scale, cycle[r % len(cycle)], mood.arp_octave), ins, base_vol)
 
         # pad: one sustained chord tone per bar (root, alternating up to the
         # 5th every other bar) -- a minimal held synth-pad layer under the
         # sequencer, not the focus.
         pad_degree = chord_tones[0] if bar % 2 == 0 else chord_tones[2]
-        _set(rng, rows, "pad", base + 0, _scale_note(root, scale, pad_degree, mood.arp_octave - 1), ins)
+        _set(rng, rows, "pad", base + 0, _scale_note(root, scale, pad_degree, mood.arp_octave - 1), ins, base_vol)
 
         # lead: quarter-note hook, same shape all chunk long so it reads as
         # a repeating motif/loop rather than a wandering melody
@@ -243,10 +243,10 @@ def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
                 deg = chord_tones[(i * 2) % len(chord_tones)]
             else:  # call_response
                 deg = degree if i % 2 == 0 else degree + 4
-            _set(rng, rows, "lead", base + r, _scale_note(root, scale, deg, mood.lead_octave), ins)
+            _set(rng, rows, "lead", base + r, _scale_note(root, scale, deg, mood.lead_octave), ins, base_vol)
             if rng.random() < 0.15 and r + 2 < ROWS_PER_BAR:
                 deg2 = deg + (1 if rng.random() < 0.5 else -1)
-                _set(rng, rows, "lead", base + r + 2, _scale_note(root, scale, deg2, mood.lead_octave), ins)
+                _set(rng, rows, "lead", base + r + 2, _scale_note(root, scale, deg2, mood.lead_octave), ins, base_vol)
 
         # drums: motorik core (four-on-the-floor kick, snare on 2 & 4) with
         # per-bar touches so it doesn't read as one static, machine-perfect
@@ -255,17 +255,17 @@ def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
         # transition accent into whatever comes next.
         drum_note = note_value(3, 0)
         for i in range(BEATS_PER_BAR):
-            _set(rng, rows, "kick", base + i * ROWS_PER_BEAT, drum_note, ins)
+            _set(rng, rows, "kick", base + i * ROWS_PER_BEAT, drum_note, ins, base_vol)
         if rng.random() < 0.15:
-            _set(rng, rows, "kick", base + 3 * ROWS_PER_BEAT + 2, drum_note, ins)
+            _set(rng, rows, "kick", base + 3 * ROWS_PER_BEAT + 2, drum_note, ins, base_vol)
 
         is_last_bar = bar == CHUNK_BARS - 1
         if is_last_bar and rng.random() < 0.5:
             for r in range(3 * ROWS_PER_BEAT, ROWS_PER_BAR):  # four-16th roll through beat 4
-                _set(rng, rows, "snare", base + r, drum_note, ins)
+                _set(rng, rows, "snare", base + r, drum_note, ins, base_vol)
         else:
-            _set(rng, rows, "snare", base + 1 * ROWS_PER_BEAT, drum_note, ins)
-            _set(rng, rows, "snare", base + 3 * ROWS_PER_BEAT, drum_note, ins)
+            _set(rng, rows, "snare", base + 1 * ROWS_PER_BEAT, drum_note, ins, base_vol)
+            _set(rng, rows, "snare", base + 3 * ROWS_PER_BEAT, drum_note, ins, base_vol)
 
         if hat_style == "eighth":
             hat_rows, hat_prob = range(0, ROWS_PER_BAR, 2), 0.95
@@ -275,7 +275,7 @@ def _generate_chunk(rng: random.Random, mood: MoodPreset, ins: Dict[str, int],
             hat_rows, hat_prob = range(ROWS_PER_BAR), 0.94
         for r in hat_rows:
             if rng.random() < hat_prob:
-                _set(rng, rows, "hat", base + r, drum_note, ins)
+                _set(rng, rows, "hat", base + r, drum_note, ins, base_vol)
 
     return rows
 
@@ -363,8 +363,25 @@ def _plan_sections(rng: random.Random, mood: MoodPreset) -> List[_Section]:
     return plan
 
 
-def generate_track(name: str, mood: MoodPreset, seed: int, bank: List[FurInstrument]) -> FurSong:
+def generate_track(name: str, mood: MoodPreset, seed: int, bank: List[FurInstrument],
+                    vol_overrides: Optional[Dict[str, int]] = None,
+                    patch_overrides: Optional[Dict[str, int]] = None) -> Tuple[FurSong, Dict[str, int]]:
+    """`vol_overrides`/`patch_overrides` (both optional, keyed by role --
+    see ROLE_TO_CHANNEL for the role names) let a specific roll be hand-tuned
+    without touching the rest of the composition: `vol_overrides[role]` is
+    an offset added to that role's ROLE_VOLUME base (still clamped into
+    0-63), `patch_overrides[role]` replaces its instrument outright. Both
+    are applied *after* the seeded picks below, and picking still always
+    happens first regardless -- so passing overrides never shifts `rng`'s
+    draw sequence, and the rest of the composition (progressions,
+    arrangement, jitter) comes out identical for a given seed whether or
+    not overrides are used. Returns the resolved per-role instrument
+    dict alongside the song so a caller can print an exact, reproducible
+    regenerate command even when nothing was overridden this run."""
     rng = random.Random(seed)
+    vol_overrides = vol_overrides or {}
+    patch_overrides = patch_overrides or {}
+    base_vol: Dict[str, int] = {role: ROLE_VOLUME[role] + vol_overrides.get(role, 0) for role in ROLE_TO_CHANNEL}
 
     ins: Dict[str, int] = {
         "lead": _pick_instrument(rng, bank, "lead_synth"),
@@ -377,6 +394,8 @@ def generate_track(name: str, mood: MoodPreset, seed: int, bank: List[FurInstrum
         ins["kick"], ins["snare"], ins["hat"] = kick_ins, snare_ins, hat_ins
     else:
         ins["kick"] = ins["snare"] = ins["hat"] = 0
+    for role, patch in patch_overrides.items():
+        ins[role] = patch
 
     prog_a, prog_b = _select_progressions(rng, mood.intensity)
 
@@ -391,7 +410,8 @@ def generate_track(name: str, mood: MoodPreset, seed: int, bank: List[FurInstrum
     chunk_root = {"A1": mood.key_root, "A2": mood.key_root, "B1": b_root, "B2": b_root, "BR1": b_root, "BR2": b_root}
     chunk_order = ["A1", "A2", "B1", "B2", "BR1", "BR2"]
     chunk_rows_by_key = {
-        key: _generate_chunk(rng, mood, ins, chunk_progression[key], chunk_root[key]) for key in chunk_order
+        key: _generate_chunk(rng, mood, ins, chunk_progression[key], chunk_root[key], base_vol)
+        for key in chunk_order
     }
     pattern_idx_by_key = {key: i for i, key in enumerate(chunk_order)}
 
@@ -422,4 +442,4 @@ def generate_track(name: str, mood: MoodPreset, seed: int, bank: List[FurInstrum
         for ch in unused_channels:
             song.orders[ch].append(EMPTY_PATTERN_IDX)
 
-    return song
+    return song, ins
