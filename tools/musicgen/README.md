@@ -211,12 +211,16 @@ seeded by `--seed` so a run is reproducible but varies a lot between seeds:
   volume column is 0-63, not 0-127 like most of Furnace's UI implies --
   confirmed directly against Furnace's own source
   (`DIV_CMD_GET_VOLMAX`) -- so if you hand-tune these, stay in that range.
-- **No hanging notes across silent sections**: every channel's "this role
-  isn't playing right now" pattern (`compose.py`'s `EMPTY_PATTERN_IDX`)
-  starts with an explicit note-off, not just an empty row. Without that, a
-  note still ringing from the previous, non-empty pattern would keep
-  holding right through the "silent" one, since nothing ever told it to
-  stop.
+- **No hanging notes across silent sections**: each of the 7 music
+  channels' "this role isn't playing right now" pattern
+  (`compose.py`'s `EMPTY_PATTERN_IDX`) starts with an explicit note-off,
+  not just an empty row. Without that, a note still ringing from the
+  previous, non-empty pattern would keep holding right through the
+  "silent" one, since nothing ever told it to stop. Channels 7/8 are
+  excluded from this -- generated music never touches them at all (they're
+  reserved for the game's own sound effects), so their pattern stays
+  genuinely empty rather than a tool with no business speaking on those
+  channels writing a note-off into them.
 
 None of this is a finished composition — it's a structured, genre-appropriate
 starting sketch meant to be opened in Furnace and hand-edited from there.
