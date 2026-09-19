@@ -6,3 +6,10 @@ CMakeUserPresets.json
 .DS_Store
 .vscode/c_cpp_properties.json
 .cache
+
+# Local music-authoring scratch: kept on disk, not published to GitHub.
+# The shipped VGM tracks live at music/*.vgm and their editable Furnace
+# sources at music/fur_levels/*.fur -- those are still tracked.
+/music/fur/
+/music/fur_keep/
+/music/old/
