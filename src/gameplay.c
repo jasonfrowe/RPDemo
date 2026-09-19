@@ -75,6 +75,7 @@ static void gameplay_update_extra_life_awards(gameplay_runtime_t *state)
         if (state->extra_lives < PLAYER_MAX_EXTRA_LIVES) {
             state->extra_lives++;
             tile_mode2_set_lives(state->extra_lives);
+            sfx_play_player("ROM:XtraLife.vgm", SFX_PRIORITY_TOP);
         }
 
         next_extra_life_score += EXTRA_LIFE_SCORE_STEP;

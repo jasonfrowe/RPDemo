@@ -12,13 +12,17 @@ sustain/release -- not tracker compositions, so a pattern-grid tracker GUI
 doesn't help author them. This script *is* the editable source; there's no
 separate hand-tunable project file the way music tracks have a .fur.
 
-Channel assignment (see src/sfx.h):
-  - Channel 7: one-shot event stingers (fire, hit, destroyed, pickup,
-    level-clear fanfare), priority-queued -- see sfx.c's sfx_play().
-  - Channel 8: the low-energy warning beep, retriggered periodically by
-    sfx.c while health is low (not a looped VGM -- the game code retriggers
-    this same short clip on a timer, matching a classic arcade "low health"
-    pulse rather than a sustained drone).
+Channel assignment (see src/sfx.h): two independent one-shot, priority-
+queued streams, one per channel, so a burst of enemy events can never
+interrupt a player cue (or vice versa) the way sharing one channel used to.
+  - Channel 7 (sfx_play_player()): everything triggered by the player --
+    fire, hit, destroyed, pickup, extra life, level-clear fanfare, and the
+    low-energy warning beep (retriggered periodically by sfx.c while
+    health is low -- not a looped VGM, the game code retriggers this same
+    short clip on a timer, matching a classic arcade pulse rather than a
+    sustained drone).
+  - Channel 8 (sfx_play_enemy()): everything triggered by an enemy --
+    fire, destroyed.
 
 Usage:
   python3 tools/generate_sfx.py            # writes every SFX to music/sfx/
@@ -157,6 +161,21 @@ class SfxBuilder:
             if i < steps:
                 self.wait_ms(step_ms)
 
+    def tremolo(self, cycles: int, curve: Tuple[int, ...], step_ms: float) -> None:
+        """Repeatedly steps the carrier's Total Level (0=loudest, 63=
+        silent) through `curve`, `cycles` times -- a volume flutter on a
+        single held pitch (call note_on() once beforehand), not a pitch
+        sweep. This is the technique behind RPPacman's own extra-life cue
+        (its sfxextralife, music/tracks/PacManCE_19.BIN there): inspected
+        directly (a reg/val/delay dump of that file) to confirm it holds
+        one note throughout and never touches 0xA0/0xB0 again after the
+        initial key-on -- all the character comes from rhythmically
+        stepping 0x40+car up and back down."""
+        for _ in range(cycles):
+            for tl in curve:
+                self._write(0x40 + self.car, tl & 0x3F)
+                self.wait_ms(step_ms)
+
     def to_vgm_bytes(self) -> bytes:
         out = bytearray()
         for reg, val, wait in self.events:
@@ -182,25 +201,34 @@ class SfxBuilder:
 
 
 def sfx_plyrfire() -> SfxBuilder:
-    """Player laser: bright, fast descending chirp -- the lowest-priority
-    SFX (fired constantly), so it's also the cheapest/shortest."""
+    """Player laser: a clean descending chirp -- low feedback and a
+    single-multiple sine-ish tone (no abs-sine grit) so it reads as clean
+    rather than scratchy sitting on top of the full OPL2 soundtrack, and
+    pitched an octave below the original version for better balance
+    against the music. The lowest-priority SFX (fired constantly), so it's
+    also the cheapest/shortest."""
     b = SfxBuilder(7)
-    b.patch(mod_mult=1, mod_tl=18, mod_ar=15, mod_dr=10, mod_sl=0, mod_rr=10, mod_wave=0,
+    b.patch(mod_mult=1, mod_tl=28, mod_ar=15, mod_dr=10, mod_sl=0, mod_rr=10, mod_wave=0,
             car_mult=1, car_tl=0, car_ar=15, car_dr=9, car_sl=2, car_rr=10, car_wave=0,
-            feedback=4, connection=0)
-    b.sweep(1800, 700, 70, steps=8)
+            feedback=1, connection=0)
+    b.sweep(900, 350, 70, steps=8)
     b.key_off()
     return b
 
 
 def sfx_enmyfire() -> SfxBuilder:
-    """Enemy laser: lower and buzzier than the player's own, so the two
-    are easy to tell apart by ear alone."""
-    b = SfxBuilder(7)
-    b.patch(mod_mult=2, mod_tl=16, mod_ar=15, mod_dr=10, mod_sl=0, mod_rr=10, mod_wave=2,
-            car_mult=1, car_tl=0, car_ar=15, car_dr=9, car_sl=2, car_rr=10, car_wave=2,
-            feedback=5, connection=0)
-    b.sweep(900, 400, 90, steps=8)
+    """Enemy laser: the same clean, low-feedback approach as the player's
+    own (see sfx_plyrfire), pitched a further octave down so the two stay
+    easy to tell apart by ear without either one sounding scratchy. Lives
+    on OPL2 channel 8 (see the module docstring), not 7 -- it has to be
+    baked into the file itself, not just decided by which software queue
+    plays it, or the two channels would still fight over the same
+    physical synth channel's registers."""
+    b = SfxBuilder(8)
+    b.patch(mod_mult=1, mod_tl=26, mod_ar=15, mod_dr=10, mod_sl=0, mod_rr=10, mod_wave=0,
+            car_mult=1, car_tl=0, car_ar=15, car_dr=9, car_sl=2, car_rr=10, car_wave=0,
+            feedback=1, connection=0)
+    b.sweep(450, 200, 90, steps=8)
     b.key_off()
     return b
 
@@ -208,8 +236,8 @@ def sfx_enmyfire() -> SfxBuilder:
 def sfx_enmydie() -> SfxBuilder:
     """Enemy destroyed: a short, gritty downward burst -- high feedback
     and a quarter-sine waveform for noise-like texture OPL2 doesn't have a
-    real noise channel for."""
-    b = SfxBuilder(7)
+    real noise channel for. Channel 8 (enemy), like sfx_enmyfire."""
+    b = SfxBuilder(8)
     b.patch(mod_mult=4, mod_tl=10, mod_ar=15, mod_dr=12, mod_sl=4, mod_rr=12, mod_wave=3,
             car_mult=3, car_tl=0, car_ar=15, car_dr=11, car_sl=3, car_rr=11, car_wave=3,
             feedback=7, connection=0)
@@ -279,11 +307,12 @@ def sfx_lvlclear() -> SfxBuilder:
 
 
 def sfx_lowenrgy() -> SfxBuilder:
-    """Low-energy warning: a short double-beep on channel 8. Not looped in
-    the file itself -- sfx.c's sfx_update() retriggers this same clip on a
-    timer while health stays low (a classic arcade pulsing alert, not a
-    sustained drone)."""
-    b = SfxBuilder(8)
+    """Low-energy warning: a short double-beep on channel 7 (player -- it's
+    the player's own health, and sfx_play_player() is what retriggers it).
+    Not looped in the file itself -- sfx.c's sfx_update() retriggers this
+    same clip on a timer while health stays low (a classic arcade pulsing
+    alert, not a sustained drone)."""
+    b = SfxBuilder(7)
     b.patch(mod_mult=2, mod_tl=10, mod_ar=15, mod_dr=10, mod_sl=4, mod_rr=10, mod_wave=1,
             car_mult=1, car_tl=0, car_ar=15, car_dr=9, car_sl=5, car_rr=9, car_wave=1,
             feedback=3, connection=0)
@@ -297,6 +326,24 @@ def sfx_lowenrgy() -> SfxBuilder:
     return b
 
 
+def sfx_extralife() -> SfxBuilder:
+    """Extra life awarded: directly inspired by RPPacman's own extra-life
+    cue (see tremolo()'s docstring for how that file was inspected).
+    Unlike every other SFX here, this isn't a pitch sweep -- it's a single
+    sustained bright tone with a rapid volume tremolo/flutter, which is
+    what gives that cue its distinctive shimmer. The rarest and highest-
+    priority event in the game deserves the longest, most deliberate
+    flourish of the set."""
+    b = SfxBuilder(7)
+    b.patch(mod_mult=2, mod_tl=10, mod_ar=15, mod_dr=9, mod_sl=5, mod_rr=5, mod_wave=0,
+            car_mult=1, car_tl=0, car_ar=15, car_dr=9, car_sl=0, car_rr=4, car_wave=0,
+            feedback=7, connection=0)
+    b.note_on(740)  # F#5 -- bright, sits above the busiest part of the music mix
+    b.tremolo(cycles=6, curve=(0, 1, 2, 3, 5, 8, 12, 16, 12, 8, 5, 3, 2, 1, 0), step_ms=9)
+    b.key_off()
+    return b
+
+
 SFX: List[Tuple[str, str, Callable[[], SfxBuilder]]] = [
     ("PlyrFire", "Player firing (lowest priority -- fired constantly)", sfx_plyrfire),
     ("EnmyFire", "Enemy firing", sfx_enmyfire),
@@ -305,7 +352,8 @@ SFX: List[Tuple[str, str, Callable[[], SfxBuilder]]] = [
     ("PlyrDie", "Player destroyed", sfx_plyrdie),
     ("PickUp", "Energy/speed/power pickup collected", sfx_pickup),
     ("LvlClear", "Level-complete celebration fanfare", sfx_lvlclear),
-    ("LowEnrgy", "Low-energy warning beep (channel 8, retriggered by sfx.c)", sfx_lowenrgy),
+    ("LowEnrgy", "Low-energy warning beep (channel 7, retriggered by sfx.c)", sfx_lowenrgy),
+    ("XtraLife", "Extra life awarded (RPPacman-inspired tremolo shimmer)", sfx_extralife),
 ]
 
 

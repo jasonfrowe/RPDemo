@@ -39,6 +39,7 @@ rp6502_asset(RPStarHopper PlyrDie.vgm music/sfx/PlyrDie.vgm)
 rp6502_asset(RPStarHopper PickUp.vgm music/sfx/PickUp.vgm)
 rp6502_asset(RPStarHopper LvlClear.vgm music/sfx/LvlClear.vgm)
 rp6502_asset(RPStarHopper LowEnrgy.vgm music/sfx/LowEnrgy.vgm)
+rp6502_asset(RPStarHopper XtraLife.vgm music/sfx/XtraLife.vgm)
 
 
 

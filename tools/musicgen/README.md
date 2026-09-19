@@ -8,6 +8,11 @@ files. Open the result in Furnace to audition and tweak by hand; pass
 `--export-vgm` to also render straight to `music/<resource>.vgm` (e.g.
 `music/Boss.vgm`) using Furnace's own headless exporter.
 
+This document covers the music composer (channels 0-6). For the game's
+sound effects (channels 7-8), see [Sound effects (SFX):
+`tools/generate_sfx.py`](#sound-effects-sfx-toolsgenerate_sfxpy) below --
+a separate, much simpler tool.
+
 (An earlier version of this tool leaned orchestral/Silpheed-inspired, and a
 separate attempt to generate melodies with a small VAE trained on real
 Silpheed MIDI didn't pan out -- see `tools/musicgen_vae/README.md` on the
@@ -160,6 +165,18 @@ Flag breakdown:
 Exits 0 on success and writes the file directly. As with `--export-vgm`,
 make sure whatever you're exporting targets plain OPL2, not OPL3/dual-chip
 (see above) — every `.fur` this tool generates already does.
+
+### Batch re-export: `tools/export_vgm.py`
+
+The quick way to pick up hand-edits made directly in the Furnace GUI
+without re-running `generate_music.py` (which would re-roll the whole
+composition): re-exports every `music/fur_levels/*.fur` to `music/*.vgm`
+in one shot, wrapping the same Furnace command as above.
+
+```sh
+python3 tools/export_vgm.py             # export every track
+python3 tools/export_vgm.py Boss Title  # export just these
+```
 
 ## Track slots
 
@@ -315,6 +332,68 @@ If you touch the binary writer, also re-check the exported VGM only uses
 opcodes RPDemo's player supports (`0x5A`, `0x61-0x63`, `0x66`, `0x67`, a
 handful of skip-N-byte opcodes — see `src/vgm.c`); nothing else should ever
 appear as long as Furnace is exporting plain OPL2.
+
+## Sound effects (SFX): `tools/generate_sfx.py`
+
+Channels 0-6 are music-only (this whole document); **channels 7 and 8 are
+reserved for the game's own sound effects** and generated music never
+touches them (see compose.py's `ROLE_TO_CHANNEL` / `EFFECT_CHANNELS`).
+`tools/generate_sfx.py` is what actually fills those two channels --
+a separate, much simpler tool from everything above:
+
+```sh
+python3 tools/generate_sfx.py            # (re)write every SFX to music/sfx/
+python3 tools/generate_sfx.py --list
+```
+
+Unlike the music composer, it writes raw VGM bytes directly (register
+writes + waits), with no Furnace/.fur round-trip at all -- these are
+short, hand-designed envelope/frequency-sweep clips (the classic arcade-
+SFX technique of rewriting the frequency register every few milliseconds
+to sweep pitch), not tracker compositions, so a pattern-grid tracker GUI
+doesn't help author them. The script *is* the editable source; there's no
+separate `.fur` project file for these the way music tracks have one.
+
+**Two independent one-shot channels**, each with its own priority queue
+(`src/sfx.c`), so a burst of events on one side can never interrupt the
+other:
+
+| Channel | Role | Game-code entry point |
+|---|---|---|
+| 7 | Everything triggered by the player | `sfx_play_player(path, priority)` |
+| 8 | Everything triggered by an enemy | `sfx_play_enemy(path, priority)` |
+
+A same-or-higher priority call always cuts in ("newest wins" within a
+tier, e.g. two enemies dying the same frame); a strictly lower one is
+dropped outright rather than queued, so e.g. constant player-fire spam
+can't cut off a rarer, more important cue. See `src/sfx.h` for the actual
+tiers.
+
+| SFX | Channel | Triggered from |
+|---|---|---|
+| `PlyrFire` | 7 | `projectile_fire_player()` |
+| `EnmyFire` | 8 | `projectile_fire_enemy()` |
+| `EnmyDie` | 8 | `enemy_try_hit()` (enemy destroyed) |
+| `PlyrHit` | 7 | `player_controller_apply_damage()`, health > 0 |
+| `PlyrDie` | 7 | `player_controller_apply_damage()`, health hits 0 |
+| `PickUp` | 7 | `projectile_try_collect_pickups()` (energy/speed/power, shared) |
+| `LvlClear` | 7 | boss health hits 0 (`gameplay_boss.c`), or level clear with no boss (`level_bonus_begin()`) -- never both, see the `boss_defeated` guard there |
+| `LowEnrgy` | 7 | `sfx.c`'s own per-frame poll of `player_controller_is_low_health()` -- a short clip retriggered on a timer, not a looped VGM, for a classic arcade pulsing alert rather than a sustained drone |
+| `XtraLife` | 7 | `gameplay_update_extra_life_awards()`, only when a life is actually granted (not at the 3-life cap) |
+
+`PlyrFire`/`EnmyFire` are pitched an octave apart (and kept deliberately
+clean -- low feedback, sine waveform) so they stay distinguishable by ear
+without either one sounding scratchy against the full music mix. Every
+carrier operator is set to Total Level 0 (OPL2's loudest, 0-63 scale) so
+these cut through a busy 7-channel soundtrack instead of getting buried by
+it. `XtraLife` is the one exception to the "pitch sweep" approach --
+inspired directly by inspecting RPPacman's own extra-life cue (a reg/val/
+delay dump of its `sfxextralife`/`PacManCE_19.BIN`), it holds a single
+note and gets its shimmer from rapidly stepping the carrier's volume up
+and down instead (see `SfxBuilder.tremolo()`).
+
+Names are 8.3-safe (`PlyrFire`, not `PlayerFireSound`) for the same reason
+the music tracks are -- see tracks.py's module docstring.
 
 ## Where this comes from
 

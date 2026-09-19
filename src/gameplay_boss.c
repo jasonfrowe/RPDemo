@@ -783,7 +783,7 @@ void gameplay_boss_update(gameplay_runtime_t *state)
     if (boss_health == 0) {
         state->level_banner_visible = true;
         boss_defeat_sequence_active = true;
-        sfx_play("ROM:LvlClear.vgm", SFX_PRIORITY_TOP);
+        sfx_play_player("ROM:LvlClear.vgm", SFX_PRIORITY_TOP);
         boss_timeout_departing = false;
         boss_defeat_timer = BOSS_DEFEAT_SEQUENCE_FRAMES;
         boss_defeat_spawn_timer = 0;
