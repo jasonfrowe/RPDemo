@@ -2,9 +2,11 @@
 """Generate Furnace (.fur) tracker projects for RPStarHopper's OPL2 music.
 
 Procedurally composes OPL2 tracks for each of the game's music slots, in
-one of a few styles (--style, see musicgen/compose.py's STYLE_NAMES: 0
-silpheed/orchestral, 1 kraftwerk/motorik electronic (default), 2 daftpunk/
-house-funk electronic), and writes them as Furnace 0.6.8.1-compatible .fur
+one of nine styles (--style, see musicgen/compose.py's STYLE_NAMES and
+module docstring for the full rundown of each: 0 silpheed/orchestral,
+1 kraftwerk/motorik electronic (default), 2 daftpunk/house-funk, 3 trance,
+4 bigroom/electro-house, 5 dubstep/halftime, 6 techno/minimal-progressive,
+7 synthwave, 8 dnb/jungle), and writes them as Furnace 0.6.8.1-compatible .fur
 files, using RPTracker's 256-patch instrument bank. Open the result in
 Furnace to audition and tweak by hand; pass --export-vgm to also render
 straight to music/RESOURCE.NNN.vgm using Furnace's own headless exporter

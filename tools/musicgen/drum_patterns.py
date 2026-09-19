@@ -69,6 +69,14 @@ PATTERNS: List[DrumPattern] = [
                 hat=_steps(5, 13), tags=frozenset({"groove"})),
     DrumPattern("boom_bap", kick=_steps(1, 3, 6, 10, 14), snare=_steps(3, 7, 11, 15),
                 hat=_steps(*range(1, 17)), tags=frozenset({"groove"})),
+
+    # "halftime": kick/snare feel half the speed of the hats -- snare/clap
+    # lands only on beat 3, not the usual 2-and-4 -- against dense,
+    # machine-gun 16th hats. The Skrillex-leaning dubstep/brostep style's pool.
+    DrumPattern("dubstep_halftime", kick=_steps(1, 7), snare=_steps(9),
+                hat=_steps(1, 4, 6, 9, 11, 12, 15), tags=frozenset({"halftime"})),
+    DrumPattern("brostep_stutter", kick=_steps(1, 4, 11), snare=_steps(9),
+                hat=_steps(*range(1, 17)), tags=frozenset({"halftime"})),
 ]
 
 

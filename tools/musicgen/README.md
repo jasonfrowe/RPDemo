@@ -1,7 +1,7 @@
 # RPStarHopper music generator
 
 Procedurally composes original, royalty-free OPL2 tracks for each of
-RPStarHopper's music slots, in one of a few styles (`--style`, see below),
+RPStarHopper's music slots, in one of nine styles (`--style`, see below),
 and writes them straight out as
 [Furnace](https://github.com/tildearrow/furnace) tracker `.fur` project
 files. Open the result in Furnace to audition and tweak by hand; pass
@@ -70,20 +70,48 @@ comes out either way, only the mix/instrumentation changes.
 ## `--style`: which composer runs
 
 ```sh
-python3 tools/generate_music.py --track boss --style 2   # daftpunk
+python3 tools/generate_music.py --track boss --style 5   # dubstep
 ```
 
 | `--style` | Name | Character |
 |---|---|---|
 | 0 | `silpheed` | The original orchestral/mallet-percussion composer this tool started as. Evolving per-bar melody (a fresh lead shape every bar, not a repeating hook), 8th-note arp, syncopated kick + 2-and-4 snare backbeat, wide orchestral/mallet-percussion/organ instrument pools. |
-| 1 (default) | `kraftwerk` | Motorik/sequenced electronic. Unbroken 16th-note arp sequence, four-on-the-floor bass locked to the kick, a short repeating lead motif (same shape for a whole 4-bar chunk). Drums drawn from `drum_patterns.py`'s "motorik" pool. |
-| 2 | `daftpunk` | Syncopated house/funk electronic. The arp plays short off-beat chord stabs (explicitly cut off, not left ringing) instead of a continuous sequence, bass is a syncopated 16th-note funk pattern, drums drawn from `drum_patterns.py`'s "groove" pool. |
+| 1 (default) | `kraftwerk` | Motorik/sequenced electronic. Unbroken 16th-note arp sequence, four-on-the-floor bass locked to the kick, a short repeating lead motif (same shape for a whole 4-bar chunk). Drums: "motorik". |
+| 2 | `daftpunk` | Syncopated house/funk. Arp plays short off-beat chord stabs (explicit note-off, not left ringing), bass is a syncopated 16th-note funk pattern, lead is the same repeating-hook shape as kraftwerk. Drums: "groove". |
+| 3 | `trance` (Tiësto-leaning) | Uplifting trance. Bass is a rolling 16th-note arpeggio (every row filled, cycling root/3rd/5th) instead of a pulse, arp runs a wide two-octave plucked run, lead holds long sustained notes instead of chattering every beat. Drums: "motorik". |
+| 4 | `bigroom` (Guetta-leaning) | Anthemic electro-house. Arp hits land only on the off-beat "and" of each beat and cut off fast (a sidechain-pump duck feel), bass is the daftpunk-style syncopated funk pattern, lead stays a simple repeating hook — big room lives and dies on one huge-sounding motif. Drums: "groove". |
+| 5 | `dubstep` (Skrillex-leaning) | Aggressive half-time. Bass wobbles between root and an octave up on a chopped, syncopated 16th grid; arp fires irregular off-grid stabs with real silence between them; lead is sparse, punchy hits with lots of rest. Drums: new "halftime" pool (kick/snare at half the hats' rate). |
+| 6 | `techno` (deadmau5-leaning) | Minimal/hypnotic progressive house. Bass is the same rolling arpeggio as trance, but the arp is mostly silence — an occasional single accent, not a continuous line — and the lead is sparse too, so the groove carries the track instead of a hook. Drums: "motorik". |
+| 7 | `synthwave` | Retro 80s-leaning. Bass is a straight driving 8th-note pulse (not quarter notes), arp is the kraftwerk-style 16th sequence, lead holds long soaring notes like trance. Drums: "motorik". |
+| 8 | `dnb` | Fast drum-and-bass/jungle energy. Bass is sparse, long sustained sub notes (mostly one per bar) under a busy syncopated 16th-note lead riff and a wide arpeggio roll. Drums: "groove" (this tool's amen_break/funky_drummer breakbeats). |
 
-Styles 1 and 2 share instrument pools (OPL2 synth lead/bass/pad GM ranges)
-and most of the chunk structure; style 0 uses the wider orchestral pools
-instead. Each style is its own `_generate_chunk_*` function in
-`compose.py`, so adding a style 3 later doesn't mean threading more
-branches through a shared one -- see that module's docstring.
+Style 0 has its own `_generate_chunk_silpheed` function and the wider
+orchestral instrument pools. Styles 1-8 all run through one shared
+`_generate_chunk_electronic` function and share instrument pools (OPL2
+synth lead/bass/pad GM ranges) — what makes them sound different from each
+other is `compose.py`'s `_STYLE_PARAMS` table, which assigns each style a
+`drum_tag` (which `drum_patterns.py` pool) plus a `bass_mode`, `arp_mode`,
+and `lead_mode`:
+
+- **`bass_mode`**: `four_on_floor` (quarter-note pulse), `syncopated`
+  (16th-note funk pattern), `arp` (rolling 16th arpeggio through the chord
+  tones), `wobble` (chopped root/octave retriggers), `pulse8` (straight
+  driving 8th notes), `legato` (sparse, long sustained notes).
+- **`arp_mode`**: `sequencer` (unbroken 16th-note cycle), `stab` (short
+  off-beat chord hits with a real note-off), `roll` (wide two-octave run),
+  `pump` (off-beat hits simulating a sidechain duck), `chop` (irregular
+  off-grid stabs with silence between them), `sparse` (mostly rests, rare
+  single accent). **The arp channel isn't always a tight 3-note loop** —
+  `sparse`/`chop`/`roll` all break that shape on purpose.
+- **`lead_mode`**: `hook` (repeating quarter-note motif, same shape all
+  chunk), `soaring` (long sustained notes), `sparse` (a few punchy hits
+  with real rests), `syncopated` (16th-note off-grid riff).
+
+Mixing these differently per style (rather than just swapping the drum
+pattern) is what keeps the 9 styles from being reskins of one shape — see
+`compose.py`'s module docstring for the full per-style rundown, and the
+mode branches inside `_generate_chunk_electronic` for exactly what each one
+does.
 
 `--export-vgm` **overwrites the existing `music/RESOURCE.NNN.vgm` in
 place** (equivalent to Furnace's File > Export > VGM) — it's meant for once
@@ -181,20 +209,26 @@ seeded by `--seed` so a run is reproducible but varies a lot between seeds:
   2-3 minutes. The outro then drops layers back out in reverse of however
   they came in, ending on whichever layer opened the track — so the loop
   point (VGM tracks loop) feels continuous instead of cutting to silence.
-- **Motorik/sequenced (styles 1/2), not evolving (style 0)**: styles 1/2
-  pick one arp mode (an unbroken 16th-note sequence for kraftwerk, short
-  off-beat chord stabs for daftpunk) and one lead motif shape *per 4-bar
-  chunk*, not re-rolled every bar, so they read as repeating, sequenced
-  hooks/loops. Style 0 re-rolls the lead's shape every bar instead, an
-  evolving melody rather than a loop.
-- **Drums** (styles 1/2) are real named beats transcribed from *Pocket
+- **Motorik/sequenced (styles 1-8), not evolving (style 0)**: styles 1-8
+  pick one bass/arp/lead mode combination (see the `--style` table above)
+  and hold shapes fixed *per 4-bar chunk*, not re-rolled every bar, so they
+  read as repeating, sequenced hooks/loops. Style 0 re-rolls the lead's
+  shape every bar instead, an evolving melody rather than a loop.
+- **Drums** (styles 1-8) are real named beats transcribed from *Pocket
   Operations* (Teenage Engineering's drum-pattern reference book) --
-  `musicgen/drum_patterns.py` -- picked once per chunk from a "motorik"
-  pool (kraftwerk) or "groove" pool (daftpunk), plus the same light per-bar
-  touches regardless of which pattern was picked: an occasional syncopated
-  kick push, hat drop-outs, and a snare roll on the chunk's last bar. Style
-  0's drums are a simpler hand-rolled syncopated-kick + 2-and-4-snare
-  backbeat, not pattern-bank-driven.
+  `musicgen/drum_patterns.py` -- picked once per chunk from that style's
+  `drum_tag` pool ("motorik", "groove", or "halftime" -- see the `--style`
+  table above), plus the same light per-bar touches regardless of which
+  pattern was picked: an occasional syncopated kick push, hat drop-outs,
+  and a snare roll on the chunk's last bar. Style 0's drums are a simpler
+  hand-rolled syncopated-kick + 2-and-4-snare backbeat, not
+  pattern-bank-driven.
+- **The occasional semitone "gear change"**: about 1 in 5 tracks (seeded,
+  so it varies run to run, not a fixed rule) transpose the second half of
+  the final full-band return up a semitone into freshly-generated content
+  before the outro -- the classic pop key-change trick, applied sparingly
+  rather than every time. See `compose.py`'s `generate_track`
+  (`semitone_bump`) and `_plan_sections`'s `A1_UP` chunk.
 - **Chord progressions** are drawn from a 3-tier bank (simple → harmonically
   restless), weighted by the track's `intensity`. Title and early levels stay
   almost entirely in the simple tier; boss fights and late levels pull
@@ -235,7 +269,7 @@ tools/
     instruments.py         # parses RPTracker's gm_bank, GM-program-range role lookup
     tracks.py               # the 9-track registry + MoodPreset per track
     compose.py              # the procedural composer(s) described above
-    drum_patterns.py         # Pocket Operations-transcribed drum pattern bank (styles 1/2)
+    drum_patterns.py         # Pocket Operations-transcribed drum pattern bank (styles 1-8)
 music/
   fur/
     RESOURCE.NNN.fur        # generated output, one per track slot
@@ -280,8 +314,17 @@ bug). The project then pivoted to fully procedural, rule-based electronic
 styles instead (no training data at all) -- both because that genre family
 is much more naturally rule-describable than "write a convincing melody,"
 and because it suits the game's high tempo and OPL2's FM-synth lineage --
-which is `--style 1` (kraftwerk) and `--style 2` (daftpunk) now.
+starting with `--style 1` (kraftwerk) and `--style 2` (daftpunk).
 `drum_patterns.py`'s beats are transcribed directly from *Pocket
 Operations* (Teenage Engineering's drum-machine-pattern reference book),
 rather than hand-rolled, once a single hand-rolled motorik beat turned out
 to feel too static repeated for a whole song.
+
+Styles 3-8 (trance, bigroom, dubstep, techno, synthwave, dnb) followed once
+regenerating a song with the same style started sounding too much like the
+last one -- each borrows its overall feel from a well-known electronic
+artist/genre (Tiësto, Guetta, Skrillex, deadmau5, ...) but isn't trying to
+imitate any specific track; it's a different combination of the same
+bass/arp/lead "mode" building blocks described under `--style` above, which
+is what actually makes them read as distinct rather than just reskins with
+a different drumbeat.
