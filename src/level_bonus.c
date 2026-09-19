@@ -8,6 +8,7 @@
 #include "player_controller.h"
 #include "projectile.h"
 #include "score.h"
+#include "sfx.h"
 #include "sprite_mode5.h"
 #include "tile_mode2.h"
 #include "level_bonus.h"
@@ -114,6 +115,13 @@ void level_bonus_begin(uint8_t current_level, bool boss_defeated)
 
     tile_mode2_start_level_bonus_transition();
     music_set_track("ROM:Bonus.vgm");
+    if (!boss_defeated) {
+        // Boss levels already played this the moment the boss's health hit
+        // zero (gameplay_boss.c) -- playing it again here, once the bonus
+        // tally screen finally appears well after the defeat animation,
+        // would be a stale repeat instead of a celebration.
+        sfx_play("ROM:LvlClear.vgm", SFX_PRIORITY_TOP);
+    }
     tile_mode2_set_level_complete_banner(false);
     tile_mode2_begin_level_bonus(current_level, bonus_multiplier);
     tile_mode2_set_bonus_pending_total(0);

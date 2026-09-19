@@ -10,6 +10,7 @@
 #include "projectile.h"
 #include "rng.h"
 #include "score.h"
+#include "sfx.h"
 #include "sprite_mode5.h"
 #include "tile_mode2.h"
 #include "gameplay_boss.h"
@@ -782,6 +783,7 @@ void gameplay_boss_update(gameplay_runtime_t *state)
     if (boss_health == 0) {
         state->level_banner_visible = true;
         boss_defeat_sequence_active = true;
+        sfx_play("ROM:LvlClear.vgm", SFX_PRIORITY_TOP);
         boss_timeout_departing = false;
         boss_defeat_timer = BOSS_DEFEAT_SEQUENCE_FRAMES;
         boss_defeat_spawn_timer = 0;

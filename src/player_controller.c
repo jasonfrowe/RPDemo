@@ -6,6 +6,7 @@
 #include "input.h"
 #include "player_controller.h"
 #include "projectile.h"
+#include "sfx.h"
 #include "sprite_mode5.h"
 
 // Speed level 1..10 maps to 0.25..2.5 pixels per frame (each step = 0.25 px/frame).
@@ -262,6 +263,9 @@ void player_controller_apply_damage(uint8_t amount)
         death_animation_complete = false;
         sprite_mode5_set_damage_flash(false);
         sprite_mode5_set_frame(death_anim_frame);
+        sfx_play("ROM:PlyrDie.vgm", SFX_PRIORITY_TOP);
+    } else {
+        sfx_play("ROM:PlyrHit.vgm", SFX_PRIORITY_TOP);
     }
 }
 

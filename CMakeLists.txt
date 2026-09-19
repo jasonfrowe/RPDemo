@@ -30,6 +30,16 @@ rp6502_asset(RPStarHopper Boss.vgm music/Boss.vgm)
 rp6502_asset(RPStarHopper Bonus.vgm music/Bonus.vgm)
 rp6502_asset(RPStarHopper Gameover.vgm music/Gameover.vgm)
 
+# SFX (channels 7/8 only -- see src/sfx.c / tools/generate_sfx.py)
+rp6502_asset(RPStarHopper PlyrFire.vgm music/sfx/PlyrFire.vgm)
+rp6502_asset(RPStarHopper EnmyFire.vgm music/sfx/EnmyFire.vgm)
+rp6502_asset(RPStarHopper EnmyDie.vgm music/sfx/EnmyDie.vgm)
+rp6502_asset(RPStarHopper PlyrHit.vgm music/sfx/PlyrHit.vgm)
+rp6502_asset(RPStarHopper PlyrDie.vgm music/sfx/PlyrDie.vgm)
+rp6502_asset(RPStarHopper PickUp.vgm music/sfx/PickUp.vgm)
+rp6502_asset(RPStarHopper LvlClear.vgm music/sfx/LvlClear.vgm)
+rp6502_asset(RPStarHopper LowEnrgy.vgm music/sfx/LowEnrgy.vgm)
+
 
 
 rp6502_executable(RPStarHopper 
@@ -55,6 +65,7 @@ target_sources(RPStarHopper PRIVATE
     src/score.c
     src/level_bonus.c
     src/music.c
+    src/sfx.c
     src/opl.c
     src/vgm.c
 )

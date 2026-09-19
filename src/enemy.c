@@ -8,6 +8,7 @@
 #include "projectile.h"
 #include "rng.h"
 #include "score.h"
+#include "sfx.h"
 #include "sprite_mode5.h"
 #include "tile_mode2.h"
 
@@ -656,6 +657,7 @@ static bool enemy_try_hit(uint8_t slot)
     if (projectile_hit_test_enemy(x, y, ENEMY_SPRITE_SIZE_PX, ENEMY_SPRITE_SIZE_PX)) {
         score_add_enemy_kill(enemies[slot].type);
         enemy_begin_death(slot);
+        sfx_play("ROM:EnmyDie.vgm", SFX_PRIORITY_DESTROYED);
         return true;
     }
 

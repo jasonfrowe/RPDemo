@@ -6,6 +6,7 @@
 #include "game_state.h"
 #include "level_bonus.h"
 #include "music.h"
+#include "sfx.h"
 #include "player_controller.h"
 #include "projectile.h"
 #include "score.h"
@@ -373,6 +374,7 @@ void gameplay_frame(bool start_pressed)
     handle_start_transition(transition);
 
     music_update();
+    sfx_update();
 
     state = game_state_get();
     if (state == GAME_STATE_TITLE) {

@@ -6,6 +6,7 @@
 #include "input.h"
 #include "player_controller.h"
 #include "music.h"
+#include "sfx.h"
 #include "projectile.h"
 #include "enemy.h"
 #include "score.h"
@@ -45,6 +46,7 @@ int main(void)
         return 1;
     }
     music_init();
+    sfx_init();
     init_input_system();
     player_controller_init();
     gameplay_init();
