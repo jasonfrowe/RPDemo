@@ -9,9 +9,9 @@ module docstring for the full rundown of each: 0 silpheed/orchestral,
 7 synthwave, 8 dnb/jungle), and writes them as Furnace 0.6.8.1-compatible .fur
 files, using RPTracker's 256-patch instrument bank. Open the result in
 Furnace to audition and tweak by hand; pass --export-vgm to also render
-straight to music/RESOURCE.NNN.vgm using Furnace's own headless exporter
-(equivalent to File > Export > VGM in the GUI). Without that flag, this
-tool never touches music/RESOURCE.NNN.vgm or CMakeLists.txt.
+straight to music/<resource>.vgm (e.g. music/Boss.vgm) using Furnace's own
+headless exporter (equivalent to File > Export > VGM in the GUI). Without
+that flag, this tool never touches music/*.vgm or CMakeLists.txt.
 
 IMPORTANT: exported VGM must be plain OPL2 (YM3812), never OPL3/dual-chip.
 RPDemo's VGM player (src/vgm.c) only understands a minimal opcode set and
@@ -58,7 +58,11 @@ from musicgen.instruments import load_bank  # noqa: E402
 
 FURNACE_BIN = "/Applications/Furnace.app/Contents/MacOS/furnace"
 MUSIC_DIR = Path(__file__).resolve().parent.parent / "music"
-DEFAULT_OUT_DIR = MUSIC_DIR / "fur"
+# fur_levels/ is the tracked, canonical editable-.fur location (matches the
+# ROM asset/output names in CMakeLists.txt and tracks.py's `resource`
+# field); music/fur/ still exists as local, gitignored scratch space, not
+# the default output target.
+DEFAULT_OUT_DIR = MUSIC_DIR / "fur_levels"
 DEFAULT_VGM_OUT_DIR = MUSIC_DIR
 
 # lead, arp, bass, pad, kick, snare, hat -- the canonical order --vol/--patch
@@ -190,13 +194,13 @@ def _fuse_negative_values(argv: list[str]) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--track", help="track alias/resource id, or 'all' (e.g. boss, level1, RESOURCE.001)")
+    parser.add_argument("--track", help="track alias/resource id, or 'all' (e.g. boss, level1, Level_01)")
     parser.add_argument("--seed", type=int, help="RNG seed, for reproducing a specific roll (only valid with a single --track)")
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help=f"output directory (default: {DEFAULT_OUT_DIR})")
     parser.add_argument("--export-vgm", action="store_true",
                          help="also render straight to VGM via Furnace's headless exporter "
-                              f"(default destination: {DEFAULT_VGM_OUT_DIR}/RESOURCE.NNN.vgm, "
-                              "overwriting the existing placeholder)")
+                              f"(default destination: {DEFAULT_VGM_OUT_DIR}/<resource>.vgm, e.g. Boss.vgm, "
+                              "overwriting the existing file)")
     parser.add_argument("--vgm-out-dir", default=str(DEFAULT_VGM_OUT_DIR),
                          help=f"VGM output directory, only used with --export-vgm (default: {DEFAULT_VGM_OUT_DIR})")
     parser.add_argument("--vol", help=f"{len(ROLE_ORDER)} comma-separated integer volume offsets, "

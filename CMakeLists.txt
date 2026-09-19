@@ -18,15 +18,17 @@ rp6502_asset(RPStarHopper help src/help.txt)
 
 # ROM Assets
 rp6502_asset(RPStarHopper StarFields_HUD_map.bin images/StarFields_HUD_map1.bin)
-rp6502_asset(RPStarHopper RESOURCE.001.vgm music/RESOURCE.001.vgm)
-rp6502_asset(RPStarHopper RESOURCE.002.vgm music/RESOURCE.002.vgm)
-rp6502_asset(RPStarHopper RESOURCE.003.vgm music/RESOURCE.003.vgm)
-rp6502_asset(RPStarHopper RESOURCE.005.vgm music/RESOURCE.005.vgm)
-rp6502_asset(RPStarHopper RESOURCE.006.vgm music/RESOURCE.006.vgm)
-rp6502_asset(RPStarHopper RESOURCE.008.vgm music/RESOURCE.008.vgm)
-rp6502_asset(RPStarHopper RESOURCE.009.vgm music/RESOURCE.009.vgm)
-rp6502_asset(RPStarHopper RESOURCE.010.vgm music/RESOURCE.010.vgm)
-rp6502_asset(RPStarHopper RESOURCE.011.vgm music/RESOURCE.011.vgm)
+rp6502_asset(RPStarHopper Title.vgm music/Title.vgm)
+rp6502_asset(RPStarHopper Level_01.vgm music/Level_01.vgm)
+rp6502_asset(RPStarHopper Level_02.vgm music/Level_02.vgm)
+rp6502_asset(RPStarHopper Level_03.vgm music/Level_03.vgm)
+rp6502_asset(RPStarHopper Level_04.vgm music/Level_04.vgm)
+rp6502_asset(RPStarHopper Level_05.vgm music/Level_05.vgm)
+rp6502_asset(RPStarHopper Level_06.vgm music/Level_06.vgm)
+rp6502_asset(RPStarHopper Level_07.vgm music/Level_07.vgm)
+rp6502_asset(RPStarHopper Boss.vgm music/Boss.vgm)
+rp6502_asset(RPStarHopper Bonus.vgm music/Bonus.vgm)
+rp6502_asset(RPStarHopper Gameover.vgm music/Gameover.vgm)
 
 
 

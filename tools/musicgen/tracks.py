@@ -1,12 +1,25 @@
 """Registry of the game's music slots and the mood each one should evoke.
 
 Mapping confirmed by reading RPDemo's source directly:
-  - src/music.c:12              default/title track
-  - src/gameplay.c:46-66        track_for_level()
-  - src/gameplay.c:176          gameplay_reset_to_title_scene() -> title track
+  - src/music.c:29              default/title track
+  - src/gameplay.c:46-66        track_for_level() -- one distinct track per
+                                 level 1-7; level 8+ falls back to Level_07
+                                 (there's no higher-level track, so the last
+                                 one just keeps playing)
+  - src/gameplay.c:177          gameplay_reset_to_title_scene() -> title track
   - src/gameplay_boss.c:367     BOSS_STAGE_MUSIC_TRACK (src/constants.h:111)
   - src/level_bonus.c:116       bonus round
   - src/gameplay_game_over.c:18 game over (win or lose)
+
+`resource` is both the ROM asset name games code opens via "ROM:<resource>"
+(see CMakeLists.txt's rp6502_asset(... <resource> music/<resource>) lines)
+and this tool's output filename stem (music/<resource>.vgm,
+music/fur_levels/<resource>.fur) -- so it doubles as the single source of
+truth tying the generator, the build, and the game's `music_set_track()`
+calls together. Previously these were opaque "RESOURCE.NNN" ids (a
+leftover of an older, smaller track count that reused one track across two
+levels, e.g. level 1 & 5 shared RESOURCE.005) -- renamed to these
+self-documenting names once every level got its own distinct track.
 """
 
 from __future__ import annotations
@@ -38,7 +51,7 @@ class MoodPreset:
 
 @dataclass
 class TrackSpec:
-    resource: str  # e.g. "RESOURCE.001"
+    resource: str  # e.g. "Level_01" -- ROM asset name and output filename stem
     description: str
     aliases: list
     mood: MoodPreset
@@ -46,55 +59,67 @@ class TrackSpec:
 
 TRACKS: list = [
     TrackSpec(
-        resource="RESOURCE.001",
+        resource="Title",
         description="Title / attract screen",
         aliases=["title"],
         mood=MoodPreset(key_root=0, scale="major", bpm=124, intensity=0.10, lead_octave=5),
     ),
     TrackSpec(
-        resource="RESOURCE.005",
-        description="Level 1 & 5",
-        aliases=["level1", "level5"],
+        resource="Level_01",
+        description="Level 1",
+        aliases=["level1"],
         mood=MoodPreset(key_root=9, scale="mixolydian", bpm=132, intensity=0.20, lead_octave=5),
     ),
     TrackSpec(
-        resource="RESOURCE.003",
-        description="Level 2 & 6",
-        aliases=["level2", "level6"],
-        mood=MoodPreset(key_root=2, scale="dorian", bpm=128, intensity=0.35, lead_octave=5),
+        resource="Level_02",
+        description="Level 2",
+        aliases=["level2"],
+        mood=MoodPreset(key_root=2, scale="dorian", bpm=128, intensity=0.30, lead_octave=5),
     ),
     TrackSpec(
-        resource="RESOURCE.008",
+        resource="Level_03",
         description="Level 3",
         aliases=["level3"],
         mood=MoodPreset(key_root=7, scale="mixolydian", bpm=134, intensity=0.40, lead_octave=5),
     ),
     TrackSpec(
-        resource="RESOURCE.002",
+        resource="Level_04",
         description="Level 4",
         aliases=["level4"],
         mood=MoodPreset(key_root=4, scale="phrygian", bpm=126, intensity=0.50, lead_octave=4),
     ),
     TrackSpec(
-        resource="RESOURCE.010",
-        description="Level 7 (late-game)",
+        resource="Level_05",
+        description="Level 5",
+        aliases=["level5"],
+        mood=MoodPreset(key_root=0, scale="minor", bpm=130, intensity=0.60, lead_octave=5),
+    ),
+    TrackSpec(
+        resource="Level_06",
+        description="Level 6",
+        aliases=["level6"],
+        mood=MoodPreset(key_root=5, scale="dorian", bpm=132, intensity=0.68, lead_octave=5),
+    ),
+    TrackSpec(
+        resource="Level_07",
+        description="Level 7 (also the level 8+ fallback -- there's no higher-level track)",
         aliases=["level7"],
         mood=MoodPreset(key_root=11, scale="minor", bpm=136, intensity=0.75, lead_octave=5),
     ),
     TrackSpec(
-        resource="RESOURCE.009",
-        description="Boss stage (also level 8+ fallback)",
+        resource="Boss",
+        description="Boss battle",
         aliases=["boss"],
         mood=MoodPreset(key_root=9, scale="minor", bpm=140, intensity=0.95, lead_octave=4, arp_octave=3),
     ),
     TrackSpec(
-        resource="RESOURCE.006",
+        resource="Bonus",
         description="Bonus / reward round",
         aliases=["bonus", "reward"],
         mood=MoodPreset(key_root=5, scale="major", bpm=128, intensity=0.15, lead_octave=5),
     ),
     TrackSpec(
-        resource="RESOURCE.011",
+        resource="Gameover",
         description="Game over (win or lose)",
         aliases=["gameover"],
         mood=MoodPreset(key_root=2, scale="minor", bpm=100, intensity=0.55, target_seconds=80.0,
@@ -105,7 +130,6 @@ TRACKS: list = [
 _ALIAS_INDEX = {}
 for _t in TRACKS:
     _ALIAS_INDEX[_t.resource] = _t
-    _ALIAS_INDEX[_t.resource.split(".")[1]] = _t  # "001"
     for _a in _t.aliases:
         _ALIAS_INDEX[_a] = _t
 

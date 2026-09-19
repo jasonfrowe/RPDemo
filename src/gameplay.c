@@ -47,21 +47,22 @@ static const char *track_for_level(uint8_t level)
 {
     switch (level) {
         case 1:
-            return "ROM:RESOURCE.005.vgm";
+            return "ROM:Level_01.vgm";
         case 2:
-            return "ROM:RESOURCE.003.vgm";
+            return "ROM:Level_02.vgm";
         case 3:
-            return "ROM:RESOURCE.008.vgm";
+            return "ROM:Level_03.vgm";
         case 4:
-            return "ROM:RESOURCE.002.vgm";
+            return "ROM:Level_04.vgm";
         case 5:
-            return "ROM:RESOURCE.005.vgm";
+            return "ROM:Level_05.vgm";
         case 6:
-            return "ROM:RESOURCE.003.vgm";
+            return "ROM:Level_06.vgm";
         case 7:
-            return "ROM:RESOURCE.010.vgm";
         default:
-            return "ROM:RESOURCE.009.vgm";
+            // Level_07 also covers level 8+ -- there's no higher-level
+            // track, so the last one just keeps playing.
+            return "ROM:Level_07.vgm";
     }
 }
 
@@ -173,7 +174,7 @@ void gameplay_reset_to_title_scene(gameplay_runtime_t *state)
     state->hud_power_pickups_last = 0;
     tile_mode2_update_health_fx(false, false);
     sprite_mode5_show_player();
-    music_set_track("ROM:RESOURCE.001.vgm");
+    music_set_track("ROM:Title.vgm");
     state->game_over_timer = 0;
     state->game_over_is_victory = false;
     state->game_over_letters_started = false;

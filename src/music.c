@@ -26,7 +26,7 @@ static void wait_vsyncs(uint8_t count) {
 }
 
 static vgm_player_t g_player;
-static const char *k_music_path = "ROM:RESOURCE.001.vgm";
+static const char *k_music_path = "ROM:Title.vgm";
 
 static bool music_start_current(void) {
     opl_init();

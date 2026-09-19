@@ -138,7 +138,7 @@ Quick mental model for addresses:
 
 Example: `rp6502_asset(... 0x13A70 images/Projectiles_4bpp.bin)` means the file is packaged as a ROM chunk tagged for XRAM destination `0x3A70`.
 
-You will also see **named ROM assets** like `RESOURCE.001.vgm` or `StarFields_HUD_map.bin`. These are opened by name via `open("ROM:...")` and are not fixed XRAM addresses unless your code explicitly copies them into XRAM.
+You will also see **named ROM assets** like `Title.vgm` or `StarFields_HUD_map.bin`. These are opened by name via `open("ROM:...")` and are not fixed XRAM addresses unless your code explicitly copies them into XRAM.
 
 ### Configuring Video Modes with XREG
 
@@ -1605,7 +1605,7 @@ The example below shows how we can implement a simple game loop with a title scr
 
             if (transition == GAME_TRANSITION_START_GAME) {
                 tile_mode2_start_gameplay_transition();
-                music_set_track("ROM:RESOURCE.005.vgm");
+                music_set_track("ROM:Level_01.vgm");
             }
         }
 
@@ -2066,7 +2066,7 @@ The game now waits for this destruction sequence to finish before entering `GAME
 Audio timing during destruction/game-over:
 - Current gameplay music stops immediately when the player is destroyed
 - Player explosion plays first
-- `music/RESOURCE.011.vgm` starts when `GAME OVER` sprites begin their fly-in sequence
+- `music/Gameover.vgm` starts when `GAME OVER` sprites begin their fly-in sequence
 - After `GAME OVER` sprites fully assemble, there is a 2-second hold before fast title-style scroll transition starts
 
 Player collision box tuning:
@@ -2083,7 +2083,7 @@ The game now runs in levels. Each level is made of 7 subwaves (enemy types `0..6
 At the end of the 7th subwave:
 1. We enter a level bonus/intermission state.
 2. Scroll transitions to fast warp style (without restoring HUD from ROM).
-3. Music switches to `music/RESOURCE.006.vgm`.
+3. Music switches to `music/Bonus.vgm`.
 4. Bonus tally is rendered.
 5. Press and release START to begin the next level.
 
@@ -2134,13 +2134,17 @@ Bonus completion prompt:
 #### Music Flow
 
 Gameplay tracks by level:
-- Level 1: `music/RESOURCE.005.vgm`
-- Level 2: `music/RESOURCE.003.vgm`
-- Level 3: `music/RESOURCE.008.vgm`
-- Level 4+: `music/RESOURCE.009.vgm`
+- Level 1: `music/Level_01.vgm`
+- Level 2: `music/Level_02.vgm`
+- Level 3: `music/Level_03.vgm`
+- Level 4: `music/Level_04.vgm`
+- Level 5: `music/Level_05.vgm`
+- Level 6: `music/Level_06.vgm`
+- Level 7+: `music/Level_07.vgm` (also the fallback for every level past 7 -- there's no higher-level track, so the last one just keeps playing)
+- Boss battles (any level): `music/Boss.vgm`, overriding whichever level track was playing
 
 Intermission track:
-- Between levels: `music/RESOURCE.006.vgm`
+- Between levels: `music/Bonus.vgm`
 
 #### Game Over State
 
@@ -2148,7 +2152,7 @@ A dedicated game-over state is now part of the state machine.
 
 On game-over entry:
 1. Enemy/projectile gameplay interactions are halted
-2. Music switches to `music/RESOURCE.011.vgm`
+2. Music switches to `music/Gameover.vgm`
 3. Background scroll transitions back toward title-style fast scrolling
 4. HUD tilemap is restored from ROM using:
     - `open("ROM:StarFields_HUD_map.bin", O_RDONLY)`
@@ -2284,7 +2288,7 @@ Benefit: Eliminates abrupt transitions and gives player visual feedback during d
 
 Game-over screen lasts for `GAME_OVER_TIMEOUT_FRAMES` (6528 frames = 108.8 seconds at 60 FPS).
 
-This duration matches the length of the game-over music track (`music/RESOURCE.011.vgm`), ensuring the music completes without the screen cutting off abruptly.
+This duration matches the length of the game-over music track (`music/Gameover.vgm`), ensuring the music completes without the screen cutting off abruptly.
 
 #### Animation Sequencing
 

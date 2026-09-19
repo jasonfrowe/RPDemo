@@ -5,8 +5,8 @@ RPStarHopper's music slots, in one of nine styles (`--style`, see below),
 and writes them straight out as
 [Furnace](https://github.com/tildearrow/furnace) tracker `.fur` project
 files. Open the result in Furnace to audition and tweak by hand; pass
-`--export-vgm` to also render straight to `music/RESOURCE.NNN.vgm` using
-Furnace's own headless exporter.
+`--export-vgm` to also render straight to `music/<resource>.vgm` (e.g.
+`music/Boss.vgm`) using Furnace's own headless exporter.
 
 (An earlier version of this tool leaned orchestral/Silpheed-inspired, and a
 separate attempt to generate melodies with a small VAE trained on real
@@ -14,7 +14,7 @@ Silpheed MIDI didn't pan out -- see `tools/musicgen_vae/README.md` on the
 `VAE-music-generation` branch for that writeup. This is a from-scratch
 pivot to a fully procedural, rule-based electronic direction instead.)
 
-Without `--export-vgm`, this tool never touches `music/RESOURCE.NNN.vgm` or
+Without `--export-vgm`, this tool never touches `music/*.vgm` or
 `CMakeLists.txt` — the workflow stops at handing you an editable `.fur`
 file to audition and export yourself, in the GUI, whenever you're happy
 with it.
@@ -22,24 +22,29 @@ with it.
 ## Quick start
 
 ```sh
-python3 tools/generate_music.py --list                  # show all 9 track slots
+python3 tools/generate_music.py --list                  # show all 11 track slots
 python3 tools/generate_music.py --track all              # (re)generate every track, fresh roll
 python3 tools/generate_music.py --track boss             # regenerate just one
 python3 tools/generate_music.py --track boss --seed 1234 # reproduce a specific roll
-python3 tools/generate_music.py --track boss --export-vgm  # also render straight to music/RESOURCE.009.vgm
+python3 tools/generate_music.py --track boss --export-vgm  # also render straight to music/Boss.vgm
 ```
 
-Output goes to `music/fur/RESOURCE.NNN.fur`. Every run prints the seed it
-used — save it if you like a particular roll, then pass `--seed` next time
-to get the exact same track back (or omit it to roll the dice again). Every
-run also prints a ready-to-copy `regenerate:` command with `--seed`,
-`--vol`, and `--patch` all filled in from what actually got generated (see
-below) — even if you didn't pass `--vol`/`--patch` yourself, so you always
-have an exact, reproducible baseline to start hand-tuning from.
+Output goes to `music/fur_levels/<resource>.fur` (e.g. `Level_01.fur`,
+`Boss.fur`) -- the tracked, canonical editable-`.fur` location; `music/fur/`
+is separate, local-only scratch space and not this tool's default target.
+Every run prints the seed it used — save it if you like a particular roll,
+then pass `--seed` next time to get the exact same track back (or omit it
+to roll the dice again). Every run also prints a ready-to-copy
+`regenerate:` command with `--seed`, `--vol`, and `--patch` all filled in
+from what actually got generated (see below) — even if you didn't pass
+`--vol`/`--patch` yourself, so you always have an exact, reproducible
+baseline to start hand-tuning from.
 
-`--track` accepts either the resource id (`001`, `RESOURCE.001`) or a
+`--track` accepts either the resource id (e.g. `Level_01`, `Boss`) or a
 friendly alias (`title`, `boss`, `level1`, ...) — see `--list` for the full
-table.
+table. The resource id is also the ROM asset name the game code opens via
+`"ROM:<resource>"` and the filename stem this tool writes -- see
+`tracks.py`'s module docstring.
 
 ## Hand-tuning a roll: `--vol` / `--patch`
 
@@ -113,7 +118,7 @@ pattern) is what keeps the 9 styles from being reskins of one shape — see
 mode branches inside `_generate_chunk_electronic` for exactly what each one
 does.
 
-`--export-vgm` **overwrites the existing `music/RESOURCE.NNN.vgm` in
+`--export-vgm` **overwrites the existing `music/<resource>.vgm` in
 place** (equivalent to Furnace's File > Export > VGM) — it's meant for once
 you're happy with a roll, not for casual browsing. Since these files are
 tracked in git, an unwanted overwrite is just a `git checkout` away, but
@@ -139,7 +144,7 @@ by hand (no GUI needed) for any `.fur` file, not just ones this tool wrote:
 For example:
 
 ```sh
-/Applications/Furnace.app/Contents/MacOS/furnace -loglevel error -subsong 0 -loops 1 -vgmout music/RESOURCE.001.vgm music/fur/RESOURCE.001.fur
+/Applications/Furnace.app/Contents/MacOS/furnace -loglevel error -subsong 0 -loops 1 -vgmout music/Title.vgm music/fur_levels/Title.fur
 ```
 
 Flag breakdown:
@@ -164,18 +169,25 @@ Mapping confirmed by reading the game's source directly (`src/gameplay.c`,
 
 | Resource | Used for | Aliases | Intensity |
 |---|---|---|---|
-| `RESOURCE.001` | Title / attract screen | `title` | 0.10 |
-| `RESOURCE.005` | Level 1 & 5 | `level1`, `level5` | 0.20 |
-| `RESOURCE.003` | Level 2 & 6 | `level2`, `level6` | 0.35 |
-| `RESOURCE.008` | Level 3 | `level3` | 0.40 |
-| `RESOURCE.002` | Level 4 | `level4` | 0.50 |
-| `RESOURCE.010` | Level 7 (late-game) | `level7` | 0.75 |
-| `RESOURCE.009` | Boss stage (+ level 8+ fallback) | `boss` | 0.95 |
-| `RESOURCE.006` | Bonus / reward round | `bonus`, `reward` | 0.15 |
-| `RESOURCE.011` | Game over (win or lose) | `gameover` | 0.55 |
+| `Title` | Title / attract screen | `title` | 0.10 |
+| `Level_01` | Level 1 | `level1` | 0.20 |
+| `Level_02` | Level 2 | `level2` | 0.30 |
+| `Level_03` | Level 3 | `level3` | 0.40 |
+| `Level_04` | Level 4 | `level4` | 0.50 |
+| `Level_05` | Level 5 | `level5` | 0.60 |
+| `Level_06` | Level 6 | `level6` | 0.68 |
+| `Level_07` | Level 7 (+ fallback for every level past 7) | `level7` | 0.75 |
+| `Boss` | Boss battle (any level) | `boss` | 0.95 |
+| `Bonus` | Bonus / reward round (between levels) | `bonus`, `reward` | 0.15 |
+| `Gameover` | Game over (win or lose) | `gameover` | 0.55 |
 
-`RESOURCE.004/007/020/021/022` exist in `music/` but aren't wired into
-`CMakeLists.txt` or referenced anywhere — dead leftovers, out of scope here.
+Each `Resource` id doubles as the ROM asset name the game opens via
+`"ROM:<resource>"` (see `CMakeLists.txt`'s `rp6502_asset(...)` lines) and
+this tool's output filename stem — `music/<resource>.vgm`,
+`music/fur_levels/<resource>.fur`. Until this table, each level reused one
+of 9 tracks (level 1 & 5 shared one, 2 & 6 shared another) under opaque
+`RESOURCE.NNN` ids; every level now has its own distinct track under a
+self-documenting name.
 
 "Intensity" (0.0-1.0) is each track's position on the game's arc, and drives
 how harmonically restless its chord progressions are and whether it
@@ -267,12 +279,14 @@ tools/
   musicgen/
     furwriter.py           # low-level .fur binary writer (see below)
     instruments.py         # parses RPTracker's gm_bank, GM-program-range role lookup
-    tracks.py               # the 9-track registry + MoodPreset per track
+    tracks.py               # the 11-track registry + MoodPreset per track
     compose.py              # the procedural composer(s) described above
     drum_patterns.py         # Pocket Operations-transcribed drum pattern bank (styles 1-8)
 music/
-  fur/
-    RESOURCE.NNN.fur        # generated output, one per track slot
+  <resource>.vgm            # shipped tracks the game loads, e.g. Title.vgm, Boss.vgm
+  fur_levels/
+    <resource>.fur          # tracked, editable Furnace source per track slot
+  fur/                      # local-only scratch (gitignored), not this tool's default output
 ```
 
 Pure Python standard library — no dependencies to install.
@@ -289,9 +303,9 @@ every change to it should be re-verified the same way it originally was:
 
 ```sh
 FUR=/Applications/Furnace.app/Contents/MacOS/furnace
-$FUR -loglevel error -info    music/fur/RESOURCE.001.fur   # structural sanity check
-$FUR -loglevel error -txtout  /tmp/out.txt music/fur/RESOURCE.001.fur  # human-readable dump
-$FUR -loglevel error -subsong 0 -loops 1 -vgmout /tmp/out.vgm music/fur/RESOURCE.001.fur  # full export round-trip
+$FUR -loglevel error -info    music/fur_levels/Title.fur   # structural sanity check
+$FUR -loglevel error -txtout  /tmp/out.txt music/fur_levels/Title.fur  # human-readable dump
+$FUR -loglevel error -subsong 0 -loops 1 -vgmout /tmp/out.vgm music/fur_levels/Title.fur  # full export round-trip
 ```
 
 (`--export-vgm` runs that same `-vgmout` command for you, straight into
