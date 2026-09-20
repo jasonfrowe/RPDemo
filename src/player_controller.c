@@ -275,9 +275,9 @@ void player_controller_apply_damage(uint8_t amount)
         death_animation_complete = false;
         sprite_mode5_set_damage_flash(false);
         sprite_mode5_set_frame(death_anim_frame);
-        sfx_play_player("ROM:PlyrDie.vgm", SFX_PRIORITY_TOP);
+        sfx_play_player(SFX_PLYRDIE_ADDR, SFX_PRIORITY_TOP);
     } else {
-        sfx_play_player("ROM:PlyrHit.vgm", SFX_PRIORITY_TOP);
+        sfx_play_player(SFX_PLYRHIT_ADDR, SFX_PRIORITY_TOP);
     }
 }
 

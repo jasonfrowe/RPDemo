@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#include "constants.h"   // SFX_DATA
+#include "sfx_layout.h"  // SFX_*_OFFSET (auto-generated)
+
 // Two independent one-shot queues -- channel 7 for everything triggered by
 // the player, channel 8 for everything triggered by an enemy -- so a burst
 // of enemy fire can never interrupt the player's own fire/hit/pickup cues
@@ -18,9 +21,22 @@
 #define SFX_PRIORITY_DESTROYED  3 // EnmyDie (ch8)
 #define SFX_PRIORITY_TOP        4 // PlyrHit, PlyrDie, XtraLife, LvlClear (ch7)
 
+// Absolute XRAM addresses of each clip's command stream -- SFX_DATA
+// (constants.h) plus its auto-generated offset (sfx_layout.h). What
+// sfx_play_player()/sfx_play_enemy() take in place of a ROM: path.
+#define SFX_PLYRFIRE_ADDR (SFX_DATA + SFX_PLYRFIRE_OFFSET)
+#define SFX_ENMYFIRE_ADDR (SFX_DATA + SFX_ENMYFIRE_OFFSET)
+#define SFX_ENMYDIE_ADDR  (SFX_DATA + SFX_ENMYDIE_OFFSET)
+#define SFX_PLYRHIT_ADDR  (SFX_DATA + SFX_PLYRHIT_OFFSET)
+#define SFX_PLYRDIE_ADDR  (SFX_DATA + SFX_PLYRDIE_OFFSET)
+#define SFX_PICKUP_ADDR   (SFX_DATA + SFX_PICKUP_OFFSET)
+#define SFX_LVLCLEAR_ADDR (SFX_DATA + SFX_LVLCLEAR_OFFSET)
+#define SFX_LOWENRGY_ADDR (SFX_DATA + SFX_LOWENRGY_OFFSET)
+#define SFX_XTRALIFE_ADDR (SFX_DATA + SFX_XTRALIFE_OFFSET)
+
 void sfx_init(void);
-void sfx_play_player(const char *path, uint8_t priority); // channel 7
-void sfx_play_enemy(const char *path, uint8_t priority);  // channel 8
+void sfx_play_player(uint16_t sfx_addr, uint8_t priority); // channel 7
+void sfx_play_enemy(uint16_t sfx_addr, uint8_t priority);  // channel 8
 void sfx_update(void);
 void sfx_stop(void);
 

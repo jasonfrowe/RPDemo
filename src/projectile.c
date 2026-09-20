@@ -93,7 +93,7 @@ void projectile_fire_player(int16_t x, int16_t y)
             projectiles[i].frame_index = PLAYER_PROJECTILE_FRAME;
             sprite_mode5_set_projectile_frame(i, PLAYER_PROJECTILE_FRAME);
             sprite_mode5_set_projectile_position(i, x, y);
-            sfx_play_player("ROM:PlyrFire.vgm", SFX_PRIORITY_FIRE);
+            sfx_play_player(SFX_PLYRFIRE_ADDR, SFX_PRIORITY_FIRE);
             return;
         }
     }
@@ -113,7 +113,7 @@ bool projectile_fire_enemy(int16_t x, int16_t y, int16_t vx_q8, int16_t vy_q8, u
             projectiles[i].frame_index = frame_index;
             sprite_mode5_set_projectile_frame(i, frame_index);
             sprite_mode5_set_projectile_position(i, x, y);
-            sfx_play_enemy("ROM:EnmyFire.vgm", SFX_PRIORITY_FIRE);
+            sfx_play_enemy(SFX_ENMYFIRE_ADDR, SFX_PRIORITY_FIRE);
             return true;
         }
     }
@@ -268,7 +268,7 @@ static void projectile_try_collect_pickups(void)
         } else if (projectiles[i].frame_index == PICKUP_POWER_FRAME) {
             player_controller_apply_power_pickup();
         }
-        sfx_play_player("ROM:PickUp.vgm", SFX_PRIORITY_PICKUP);
+        sfx_play_player(SFX_PICKUP_ADDR, SFX_PRIORITY_PICKUP);
 
         projectile_deactivate(i);
     }

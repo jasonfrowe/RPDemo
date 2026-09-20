@@ -14,6 +14,11 @@ rp6502_asset(RPStarHopper 0x115C0 images/StarFields_HUD_map.bin)
 rp6502_asset(RPStarHopper 0x11A70 images/StarFields_tiles_4bpp.bin)
 rp6502_asset(RPStarHopper 0x13A70 images/Projectiles_4bpp.bin)
 rp6502_asset(RPStarHopper 0x13C10 images/Enemies_4bpp.bin)
+# SFX command-stream data (SFX_DATA in constants.h = 0x9410 = 0x13C10 +
+# ENEMY_DATA_SIZE 0x5800; keep this address in sync with constants.h by
+# hand, the same way every XRAM asset above it already has to be -- see
+# src/sfx.c / tools/generate_sfx.py).
+rp6502_asset(RPStarHopper 0x19410 music/sfx/sfx_xram.bin)
 rp6502_asset(RPStarHopper help src/help.txt)
 
 # ROM Assets
@@ -29,17 +34,6 @@ rp6502_asset(RPStarHopper Level_07.vgm music/Level_07.vgm)
 rp6502_asset(RPStarHopper Boss.vgm music/Boss.vgm)
 rp6502_asset(RPStarHopper Bonus.vgm music/Bonus.vgm)
 rp6502_asset(RPStarHopper Gameover.vgm music/Gameover.vgm)
-
-# SFX (channels 7/8 only -- see src/sfx.c / tools/generate_sfx.py)
-rp6502_asset(RPStarHopper PlyrFire.vgm music/sfx/PlyrFire.vgm)
-rp6502_asset(RPStarHopper EnmyFire.vgm music/sfx/EnmyFire.vgm)
-rp6502_asset(RPStarHopper EnmyDie.vgm music/sfx/EnmyDie.vgm)
-rp6502_asset(RPStarHopper PlyrHit.vgm music/sfx/PlyrHit.vgm)
-rp6502_asset(RPStarHopper PlyrDie.vgm music/sfx/PlyrDie.vgm)
-rp6502_asset(RPStarHopper PickUp.vgm music/sfx/PickUp.vgm)
-rp6502_asset(RPStarHopper LvlClear.vgm music/sfx/LvlClear.vgm)
-rp6502_asset(RPStarHopper LowEnrgy.vgm music/sfx/LowEnrgy.vgm)
-rp6502_asset(RPStarHopper XtraLife.vgm music/sfx/XtraLife.vgm)
 
 
 

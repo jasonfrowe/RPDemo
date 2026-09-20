@@ -1,6 +1,8 @@
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
+#include "sfx_layout.h" // auto-generated SFX_DATA_SIZE -- see tools/generate_sfx.py
+
 // Screen dimensions
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 240
@@ -117,8 +119,15 @@
 #define ENEMY_TYPE_COUNT       7
 #define MAX_ENEMIES            32
 
+// SFX command-stream data: every SFX clip's (reg,val)/wait/end byte stream
+// (see tools/generate_sfx.py), preloaded into XRAM as a ROM asset at boot
+// like the sprite bitmaps above it, instead of opened as a ROM: file on
+// every trigger -- see src/sfx.c's module docstring for why that mattered.
+// SFX_DATA_SIZE comes from sfx_layout.h (auto-generated, included above);
+// regenerating the SFX (tools/generate_sfx.py) keeps it in sync.
+#define SFX_DATA               (ENEMY_DATA + ENEMY_DATA_SIZE)
 
-#define SPRITE_DATA_END        (ENEMY_DATA + ENEMY_DATA_SIZE) // End of sprite data
+#define SPRITE_DATA_END        (SFX_DATA + SFX_DATA_SIZE) // End of sprite+SFX data
 
 
 // Palette configurations

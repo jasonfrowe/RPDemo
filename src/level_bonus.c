@@ -120,7 +120,7 @@ void level_bonus_begin(uint8_t current_level, bool boss_defeated)
         // zero (gameplay_boss.c) -- playing it again here, once the bonus
         // tally screen finally appears well after the defeat animation,
         // would be a stale repeat instead of a celebration.
-        sfx_play_player("ROM:LvlClear.vgm", SFX_PRIORITY_TOP);
+        sfx_play_player(SFX_LVLCLEAR_ADDR, SFX_PRIORITY_TOP);
     }
     tile_mode2_set_level_complete_banner(false);
     tile_mode2_begin_level_bonus(current_level, bonus_multiplier);
