@@ -25,6 +25,15 @@ typedef struct {
     vgm_player_t player;
     uint8_t priority; // 0 while nothing is playing
     uint8_t silence_reg;
+    // At most one *new* trigger per channel per frame, unless it's a real
+    // priority upgrade -- without this, something that fires several
+    // same-priority one-shots within a single frame (e.g. an enemy that
+    // explodes into a spray of bullets, each independently calling
+    // sfx_play_enemy()) does a full vgm_close()+vgm_open() (file I/O) for
+    // every single one, immediately clobbering the previous one before a
+    // single frame of it has even rendered. Reset once per frame in
+    // sfx_update().
+    bool retriggered_this_frame;
 } sfx_channel_t;
 
 static sfx_channel_t g_player_ch = {.silence_reg = 0xB7};
@@ -35,6 +44,7 @@ static uint16_t g_low_energy_timer = 0;
 static void sfx_channel_init(sfx_channel_t *ch) {
     ch->player.fd = -1;
     ch->priority = 0;
+    ch->retriggered_this_frame = false;
 }
 
 static void sfx_channel_play(sfx_channel_t *ch, const char *path, uint8_t priority) {
@@ -44,6 +54,14 @@ static void sfx_channel_play(sfx_channel_t *ch, const char *path, uint8_t priori
         // something more important.
         return;
     }
+    if (ch->retriggered_this_frame && priority <= ch->priority) {
+        // Already accepted a new trigger this frame -- drop a same-or-
+        // lower-priority repeat rather than reopen again (see the
+        // retriggered_this_frame comment above). A genuine priority
+        // upgrade still gets through.
+        return;
+    }
+    ch->retriggered_this_frame = true;
 
     if (ch->player.fd >= 0) {
         vgm_close(&ch->player);
@@ -118,6 +136,13 @@ static void sfx_update_low_energy(void) {
 }
 
 void sfx_update(void) {
+    // Called once per frame, before this frame's gameplay logic runs (see
+    // gameplay.c) -- so clearing the flag here means "no new trigger yet
+    // this frame" for whatever sfx_play_player()/sfx_play_enemy() calls
+    // are about to happen below it in the frame.
+    g_player_ch.retriggered_this_frame = false;
+    g_enemy_ch.retriggered_this_frame = false;
+
     sfx_channel_update(&g_player_ch);
     sfx_channel_update(&g_enemy_ch);
     sfx_update_low_energy();
