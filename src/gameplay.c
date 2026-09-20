@@ -73,8 +73,10 @@ static void gameplay_update_extra_life_awards(gameplay_runtime_t *state)
 
     while (score >= next_extra_life_score) {
         if (state->extra_lives < PLAYER_MAX_EXTRA_LIVES) {
+            uint8_t old_lives = state->extra_lives;
             state->extra_lives++;
             tile_mode2_set_lives(state->extra_lives);
+            tile_mode2_flash_life_change(old_lives, state->extra_lives);
             sfx_play_player(SFX_XTRALIFE_ADDR, SFX_PRIORITY_TOP);
         }
 
@@ -374,10 +376,12 @@ void gameplay_frame(bool start_pressed)
 
     handle_start_transition(transition);
 
+    state = game_state_get();
+
     music_update();
+    sfx_set_low_energy_muted(state == GAME_STATE_LEVEL_BONUS);
     sfx_update();
 
-    state = game_state_get();
     if (state == GAME_STATE_TITLE) {
         sprite_mode5_update_engine(false);
         tile_mode2_update_title_palette();
@@ -402,4 +406,5 @@ void gameplay_frame(bool start_pressed)
     }
 
     gameplay_update_extra_life_awards(&runtime_state);
+    tile_mode2_update_lives_fx();
 }

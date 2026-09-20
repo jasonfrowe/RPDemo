@@ -102,8 +102,10 @@ void gameplay_update_playing_state(gameplay_runtime_t *state)
     if (player_controller_is_destroyed()) {
         if (state->extra_lives > 0) {
             if (player_controller_is_death_animation_complete()) {
+                uint8_t old_lives = state->extra_lives;
                 state->extra_lives--;
                 tile_mode2_set_lives(state->extra_lives);
+                tile_mode2_flash_life_change(old_lives, state->extra_lives);
                 player_controller_begin_respawn();
                 state->hud_health_last = player_controller_get_health();
                 tile_mode2_set_health(state->hud_health_last);

@@ -33,5 +33,6 @@ void enemy_start_game_over_animation(void);
 void enemy_stop_game_over_animation(void);
 bool enemy_is_game_over_animation_complete(void);
 void enemy_spawn_for_boss(uint8_t enemy_type, uint8_t wave_slot);
+uint8_t enemy_type_base_frame(uint8_t enemy_type);
 
 #endif // ENEMY_H

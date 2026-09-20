@@ -25,6 +25,10 @@ static bool warp_tile_backup_valid = false;
 static uint8_t warp_tile_backup[5][32];
 static uint16_t current_health_palette_color = 0;
 static uint8_t health_flash_tick = 0;
+static uint8_t lives_flash_slot = 0;
+static bool lives_flash_steady_is_icon = false;
+static uint16_t lives_flash_timer = 0;
+static uint8_t lives_flash_tick = 0;
 
 #define TILE_SCROLL_WRAP_PX 480
 #define TILE_SCROLL_WRAP_HALF_PX (TILE_SCROLL_WRAP_PX * 2)
@@ -67,6 +71,8 @@ static uint8_t health_flash_tick = 0;
 #define LIVES_SLOT_1_X 28
 #define LIVES_SLOT_2_X 30
 #define LIVES_MAX_DISPLAY 3
+#define LIVES_FLASH_DURATION_FRAMES 30
+#define LIVES_FLASH_TOGGLE_FRAMES 4
 #define SPEED_PICKUP_TILE_INDEX 254
 #define SPEED_PICKUP_X_START 4
 #define SPEED_PICKUP_Y 1
@@ -179,18 +185,6 @@ static void tile_mode2_write_two_digits(uint8_t x, uint8_t y, uint16_t value)
         tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 1), y, (uint8_t)(SCORE_TILE_INDEX_BASE + tens));
         tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 2), y, (uint8_t)(SCORE_TILE_INDEX_BASE + ones));
     }
-
-static void tile_mode2_write_four_digits(uint8_t x, uint8_t y, uint16_t value)
-{
-    uint16_t divisor = 1000;
-
-    for (uint8_t i = 0; i < 4; ++i) {
-        uint8_t digit = (uint8_t)(value / divisor);
-        value = (uint16_t)(value % divisor);
-        divisor = (uint16_t)(divisor / 10u);
-        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, (uint8_t)(SCORE_TILE_INDEX_BASE + digit));
-    }
-}
 
 static void tile_mode2_write_five_digits(uint8_t x, uint8_t y, uint32_t value)
 {
@@ -819,6 +813,17 @@ void tile_mode2_set_health(uint8_t health)
     }
 }
 
+static uint8_t tile_mode2_lives_slot_x(uint8_t slot)
+{
+    if (slot == 0u) {
+        return LIVES_SLOT_0_X;
+    }
+    if (slot == 1u) {
+        return LIVES_SLOT_1_X;
+    }
+    return LIVES_SLOT_2_X;
+}
+
 void tile_mode2_set_lives(uint8_t extra_lives)
 {
     uint8_t clamped_lives = extra_lives;
@@ -826,6 +831,13 @@ void tile_mode2_set_lives(uint8_t extra_lives)
     if (clamped_lives > LIVES_MAX_DISPLAY) {
         clamped_lives = LIVES_MAX_DISPLAY;
     }
+
+    // Any HUD redraw of the authoritative lives state (scene transitions,
+    // resets) supersedes an in-progress flash rather than leaving it to
+    // blink over a screen it no longer describes -- genuine gain/loss
+    // events re-arm it explicitly via tile_mode2_flash_life_change() right
+    // after calling this.
+    lives_flash_timer = 0;
 
     tile_mode2_write_tile(
         STARFIELD_HUD_DATA,
@@ -850,6 +862,53 @@ void tile_mode2_set_lives(uint8_t extra_lives)
         LIVES_SLOT_Y,
         (clamped_lives >= 3u) ? LIVES_ICON_TILE_INDEX : 0
     );
+}
+
+// Call right after tile_mode2_set_lives() at a genuine gain/loss event
+// (not a HUD reset/restore) to blink the one slot icon that just changed.
+// old_lives/new_lives are the values immediately either side of the
+// ++/-- -- whichever is higher names the slot that flipped either way.
+void tile_mode2_flash_life_change(uint8_t old_lives, uint8_t new_lives)
+{
+    uint8_t high = (old_lives > new_lives) ? old_lives : new_lives;
+
+    if (high == 0u || high > LIVES_MAX_DISPLAY) {
+        return;
+    }
+
+    lives_flash_slot = (uint8_t)(high - 1u);
+    lives_flash_steady_is_icon = (new_lives > lives_flash_slot);
+    lives_flash_timer = LIVES_FLASH_DURATION_FRAMES;
+    lives_flash_tick = 0;
+}
+
+// Called once per frame regardless of game state (see gameplay_frame()) so
+// an in-progress flash always finishes even if the state changes mid-blink.
+void tile_mode2_update_lives_fx(void)
+{
+    uint8_t slot_x;
+    uint8_t steady_tile;
+    uint8_t tile_index;
+
+    if (lives_flash_timer == 0u) {
+        return;
+    }
+
+    lives_flash_timer--;
+    lives_flash_tick = (uint8_t)((lives_flash_tick + 1u) % (LIVES_FLASH_TOGGLE_FRAMES * 2u));
+
+    slot_x = tile_mode2_lives_slot_x(lives_flash_slot);
+    steady_tile = lives_flash_steady_is_icon ? LIVES_ICON_TILE_INDEX : 0;
+    tile_index = (lives_flash_tick < LIVES_FLASH_TOGGLE_FRAMES)
+        ? (uint8_t)((steady_tile == 0u) ? LIVES_ICON_TILE_INDEX : 0u)
+        : steady_tile;
+
+    tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, slot_x, LIVES_SLOT_Y, tile_index);
+
+    if (lives_flash_timer == 0u) {
+        // Land exactly on the steady state so we never get stuck mid-blink.
+        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, slot_x, LIVES_SLOT_Y, steady_tile);
+    }
 }
 
 void tile_mode2_set_speed_pickups(uint8_t count)
@@ -990,7 +1049,7 @@ void tile_mode2_begin_level_bonus(uint8_t level, uint8_t multiplier)
         tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 5), row_y, HUD_SYMBOL_X_TILE_INDEX);
         tile_mode2_write_three_digits((uint8_t)(BONUS_TABLE_X + 6), row_y, 0);
         tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 9), row_y, HUD_SYMBOL_EQUALS_TILE_INDEX);
-        tile_mode2_write_four_digits((uint8_t)(BONUS_TABLE_X + 11), row_y, 0);
+        tile_mode2_write_five_digits((uint8_t)(BONUS_TABLE_X + 10), row_y, 0);
     }
 
     tile_mode2_set_bonus_boss_row(0);
@@ -1012,7 +1071,7 @@ void tile_mode2_set_bonus_row(uint8_t enemy_type, uint16_t kills, uint16_t point
     tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 5), row_y, HUD_SYMBOL_X_TILE_INDEX);
     tile_mode2_write_three_digits((uint8_t)(BONUS_TABLE_X + 6), row_y, points_each);
     tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 9), row_y, HUD_SYMBOL_EQUALS_TILE_INDEX);
-    tile_mode2_write_four_digits((uint8_t)(BONUS_TABLE_X + 11), row_y, subtotal);
+    tile_mode2_write_five_digits((uint8_t)(BONUS_TABLE_X + 10), row_y, subtotal);
 }
 
 void tile_mode2_set_bonus_boss_row(uint16_t boss_points)

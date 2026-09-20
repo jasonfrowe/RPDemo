@@ -88,6 +88,12 @@
 #define BOSS_LEVEL_SEVEN_FRAME_SET_ATTACK_BASE 170
 #define BOSS_WAVE_DIVE_EXIT_SPEED_PX 3
 #define BOSS_WAVE_DIVE_RISE_SPEED_PX 3
+// Boss 5's dive-down-the-screen pattern is much easier to dodge than boss
+// 2's dive (same shared speed constants above) since it beelines straight
+// at the player's last-known x -- 2x vertical speed only for variant five,
+// leaving boss 2 untouched.
+#define BOSS_VARIANT_FIVE_DIVE_EXIT_SPEED_PX (BOSS_WAVE_DIVE_EXIT_SPEED_PX * 2)
+#define BOSS_VARIANT_FIVE_DIVE_RISE_SPEED_PX (BOSS_WAVE_DIVE_RISE_SPEED_PX * 2)
 #define BOSS_WAVE_DIVE_UNDER_PLAYER_OFFSET_PX 2
 #define BOSS_WAVE_DIVE_PHASE_EXIT_TOP 0
 #define BOSS_WAVE_DIVE_PHASE_RISE_FROM_BOTTOM 1
@@ -135,6 +141,11 @@ static uint8_t boss_collision_x_min = BOSS_WEAKSPOT_X_MIN;
 static uint8_t boss_collision_x_max = BOSS_WEAKSPOT_X_MAX;
 static bool boss_wave_dive_active = false;
 static uint8_t boss_wave_dive_phase = BOSS_WAVE_DIVE_PHASE_EXIT_TOP;
+// Variant five only: true from the moment a dive is triggered until the
+// boss has horizontally lined up with the player, so the first descent
+// always starts on a beeline instead of wherever the boss happened to be
+// hovering when the wave timer fired.
+static bool boss_wave_dive_aligning = false;
 static bool boss_wave_slide_active = false;
 static uint8_t boss_wave_slide_phase = BOSS_WAVE_SLIDE_PHASE_SINK_TO_BOTTOM;
 static int16_t boss_wave_slide_target_x = BOSS_START_X;
@@ -359,6 +370,7 @@ void gameplay_boss_begin(gameplay_runtime_t *state)
     boss_wave_count = 0;
     boss_wave_dive_active = false;
     boss_wave_dive_phase = BOSS_WAVE_DIVE_PHASE_EXIT_TOP;
+    boss_wave_dive_aligning = false;
     boss_wave_slide_active = false;
     boss_wave_slide_phase = BOSS_WAVE_SLIDE_PHASE_SINK_TO_BOTTOM;
     boss_wave_slide_target_x = BOSS_START_X;
@@ -369,7 +381,7 @@ void gameplay_boss_begin(gameplay_runtime_t *state)
     boss_defeat_rng = 0xC35Fu;
     state->level_banner_visible = false;
     state->hud_health_last = player_controller_get_health();
-    music_set_track(BOSS_STAGE_MUSIC_TRACK);
+    music_set_track((state->current_level >= 7) ? BOSS_FINAL_STAGE_MUSIC_TRACK : BOSS_STAGE_MUSIC_TRACK);
     tile_mode2_set_boss_hud_visible(true);
     tile_mode2_set_boss_health(boss_health);
     sprite_mode5_set_boss_palette_active(true);
@@ -506,8 +518,10 @@ void gameplay_boss_update(gameplay_runtime_t *state)
     if (player_controller_is_destroyed()) {
         if (state->extra_lives > 0) {
             if (player_controller_is_death_animation_complete()) {
+                uint8_t old_lives = state->extra_lives;
                 state->extra_lives--;
                 tile_mode2_set_lives(state->extra_lives);
+                tile_mode2_flash_life_change(old_lives, state->extra_lives);
                 player_controller_begin_respawn();
                 state->hud_health_last = player_controller_get_health();
                 tile_mode2_set_health(state->hud_health_last);
@@ -550,8 +564,39 @@ void gameplay_boss_update(gameplay_runtime_t *state)
         int16_t boss_height = (int16_t)(BOSS_GRID_ROWS * ENEMY_SPRITE_SIZE_PX);
 
         if (boss_variant == BOSS_VARIANT_FIVE) {
-            if (boss_wave_dive_phase == BOSS_WAVE_DIVE_PHASE_EXIT_TOP) {
-                boss_y = (int16_t)(boss_y + BOSS_WAVE_DIVE_EXIT_SPEED_PX);
+            if (boss_wave_dive_phase == BOSS_WAVE_DIVE_PHASE_EXIT_TOP && boss_wave_dive_aligning) {
+                // Track the player's x before falling -- keeps the whole
+                // first descent lined up with them instead of beelining
+                // from wherever the boss happened to be hovering.
+                int16_t player_center_x = (int16_t)(player_x + (PLAYER_SPRITE_SIZE_PX / 2));
+                int16_t target_x = (int16_t)(player_center_x - (boss_width / 2));
+                int16_t min_x = BOSS_ARENA_MARGIN_X;
+                int16_t max_x = (int16_t)(SCREEN_WIDTH - boss_width - BOSS_ARENA_MARGIN_X);
+
+                if (target_x < min_x) {
+                    target_x = min_x;
+                } else if (target_x > max_x) {
+                    target_x = max_x;
+                }
+
+                if (boss_x < target_x) {
+                    boss_x = (int16_t)(boss_x + BOSS_PIVOT_STEP_X);
+                    if (boss_x > target_x) {
+                        boss_x = target_x;
+                    }
+                } else if (boss_x > target_x) {
+                    boss_x = (int16_t)(boss_x - BOSS_PIVOT_STEP_X);
+                    if (boss_x < target_x) {
+                        boss_x = target_x;
+                    }
+                }
+
+                if (boss_x >= (int16_t)(target_x - BOSS_SHOT_ALIGN_TOLERANCE_PX) &&
+                    boss_x <= (int16_t)(target_x + BOSS_SHOT_ALIGN_TOLERANCE_PX)) {
+                    boss_wave_dive_aligning = false;
+                }
+            } else if (boss_wave_dive_phase == BOSS_WAVE_DIVE_PHASE_EXIT_TOP) {
+                boss_y = (int16_t)(boss_y + BOSS_VARIANT_FIVE_DIVE_EXIT_SPEED_PX);
                 if (boss_y >= (int16_t)(SCREEN_HEIGHT + boss_height)) {
                     int16_t player_center_x = (int16_t)(player_x + (PLAYER_SPRITE_SIZE_PX / 2));
                     int16_t target_x = (int16_t)(player_center_x - (boss_width / 2));
@@ -569,9 +614,16 @@ void gameplay_boss_update(gameplay_runtime_t *state)
                     boss_wave_dive_phase = BOSS_WAVE_DIVE_PHASE_RISE_FROM_BOTTOM;
                 }
             } else {
-                boss_y = (int16_t)(boss_y + BOSS_WAVE_DIVE_RISE_SPEED_PX);
+                boss_y = (int16_t)(boss_y + BOSS_VARIANT_FIVE_DIVE_RISE_SPEED_PX);
                 if (boss_y >= (int16_t)(SCREEN_HEIGHT + BOSS_WAVE_DIVE_UNDER_PLAYER_OFFSET_PX)) {
-                    boss_y = BOSS_ARENA_TOP_Y;
+                    // Reappear from off-screen top and fly down into the
+                    // attack row instead of teleporting straight there --
+                    // reuses the same boss_entering descent as the initial
+                    // spawn (see the block above), which already keeps the
+                    // attack pattern and next wave trigger on hold until it
+                    // arrives.
+                    boss_y = (int16_t)(-boss_height);
+                    boss_entering = true;
                     boss_wave_dive_active = false;
                     boss_wave_dive_phase = BOSS_WAVE_DIVE_PHASE_EXIT_TOP;
                     boss_pivot_index = 0;
@@ -855,6 +907,7 @@ void gameplay_boss_update(gameplay_runtime_t *state)
                 } else if (boss_variant == BOSS_VARIANT_FIVE) {
                     boss_wave_dive_active = true;
                     boss_wave_dive_phase = BOSS_WAVE_DIVE_PHASE_EXIT_TOP;
+                    boss_wave_dive_aligning = true;
                 }
                 boss_wave_active = true;
             }
@@ -917,6 +970,7 @@ void gameplay_boss_reset(void)
     boss_collision_x_max = BOSS_WEAKSPOT_X_MAX;
     boss_wave_dive_active = false;
     boss_wave_dive_phase = BOSS_WAVE_DIVE_PHASE_EXIT_TOP;
+    boss_wave_dive_aligning = false;
     boss_wave_slide_active = false;
     boss_wave_slide_phase = BOSS_WAVE_SLIDE_PHASE_SINK_TO_BOTTOM;
     boss_wave_slide_target_x = BOSS_START_X;
@@ -928,4 +982,21 @@ void gameplay_boss_reset(void)
     sprite_mode5_set_boss_palette_active(false);
     tile_mode2_set_boss_hud_visible(false);
     sprite_mode5_hide_boss();
+}
+
+// Same level->frame-set mapping as gameplay_boss_begin() above, minus the
+// ">=N cascades to N's look" fallback that lets level 8+ reuse level 7's
+// boss during real gameplay -- callers here (the victory parade) always
+// want the exact level 1-7 look, one round per level, not a clamp.
+uint8_t gameplay_boss_frame_set_a_base_for_level(uint8_t level)
+{
+    switch (level) {
+        case 2: return BOSS_LEVEL_TWO_FRAME_SET_A_BASE;
+        case 3: return BOSS_LEVEL_THREE_FRAME_SET_A_BASE;
+        case 4: return BOSS_LEVEL_FOUR_FRAME_SET_A_BASE;
+        case 5: return BOSS_LEVEL_FIVE_FRAME_SET_A_BASE;
+        case 6: return BOSS_LEVEL_SIX_FRAME_SET_A_BASE;
+        case 7: return BOSS_LEVEL_SEVEN_FRAME_SET_A_BASE;
+        default: return BOSS_FRAME_SET_A_BASE;
+    }
 }

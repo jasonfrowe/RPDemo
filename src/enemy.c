@@ -238,6 +238,11 @@ static uint8_t enemy_base_frame_for_type(uint8_t enemy_type)
     return (uint8_t)(enemy_type * ENEMY_FRAMES_PER_TYPE);
 }
 
+uint8_t enemy_type_base_frame(uint8_t enemy_type)
+{
+    return enemy_base_frame_for_type(enemy_type);
+}
+
 static void enemy_update_active_animation(uint8_t slot)
 {
     uint8_t base_frame;

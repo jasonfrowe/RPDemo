@@ -17,6 +17,10 @@
 #define PLAYER_RESPAWN_INVINCIBLE_FRAMES (3 * 60)
 #define PLAYER_RESPAWN_RISE_SPEED_PX 2
 #define PLAYER_RESPAWN_BLINK_TOGGLE_FRAMES 6
+// Slower, steady pulse for the low-health warning -- distinct from the
+// faster hit-reaction flash below so the two read as different signals
+// (one "you're hurt right now", the other "you're in danger").
+#define PLAYER_LOW_HEALTH_FLASH_TOGGLE_FRAMES 15
 
 // Internal fixed-point position: 4 fractional bits (1/16 px), not the 8 the
 // "_q8" naming suggests -- the 6502 has no hardware multiply/wide-add, and
@@ -56,6 +60,7 @@ static bool prev_speed_up = false;
 static uint8_t fire_cooldown = 0;
 static uint8_t player_fire_rate = PLAYER_FIRE_RATE;
 static uint8_t damage_flash_phase = 0;
+static uint8_t low_health_flash_tick = 0;
 
 static int16_t player_start_y(void)
 {
@@ -365,9 +370,15 @@ void player_controller_update(void)
         } else {
             sprite_mode5_set_damage_flash(false);
         }
+        low_health_flash_tick = 0;
+    } else if (player_controller_is_low_health() && !player_destroyed) {
+        low_health_flash_tick = (uint8_t)((low_health_flash_tick + 1) % (PLAYER_LOW_HEALTH_FLASH_TOGGLE_FRAMES * 2u));
+        sprite_mode5_set_damage_flash(low_health_flash_tick < PLAYER_LOW_HEALTH_FLASH_TOGGLE_FRAMES);
+        damage_flash_phase = 0;
     } else {
         sprite_mode5_set_damage_flash(false);
         damage_flash_phase = 0;
+        low_health_flash_tick = 0;
     }
 
     if (player_destroyed) {
