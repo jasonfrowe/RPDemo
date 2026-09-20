@@ -35,7 +35,11 @@
 #define BOSS_ATTACK_VOLLEYS_PER_WINDOW 3
 #define BOSS_SHOT_ALIGN_TOLERANCE_PX 18
 #define BOSS_PROJECTILE_VX_Q8 0
-#define BOSS_PROJECTILE_VY_Q8 (3 << 8)
+// 3 px/frame written out at Q4 (see enemy.c's Q8_SHIFT comment) rather than
+// via TO_Q8(), since this file has no local copy of that macro -- must stay
+// in sync with projectile.c/enemy.c's shift, since it's stored straight
+// into Projectile.vy_q8 and interpreted at that same scale.
+#define BOSS_PROJECTILE_VY_Q8 (3 << 4)
 #define BOSS_DAMAGE_PER_HIT 4
 #define BOSS_HIT_SCORE_POINTS 100
 #define BOSS_HIT_FLASH_FRAMES 12

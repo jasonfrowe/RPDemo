@@ -12,8 +12,15 @@
 #include "sprite_mode5.h"
 #include "tile_mode2.h"
 
-#define Q8_SHIFT 8
-#define TO_Q8(px) ((int32_t)(px) * (1 << Q8_SHIFT))
+// 4 fractional bits, not 8 -- see player_controller.c's Q8_SHIFT comment for
+// why (same reasoning: the 6502 has no hardware multiply/wide-add, every
+// speed here is a whole multiple of 0.25px which this still represents
+// exactly, and the screen's range fits int16_t at this precision). Enemy
+// positions, wave-group formation state, and projectile velocities
+// (Projectile.vx_q8/vy_q8, which enemy-fired projectiles' speed constants
+// below feed directly) all share this same scale.
+#define Q8_SHIFT 4
+#define TO_Q8(px) ((int16_t)((px) * (1 << Q8_SHIFT)))
 #define FROM_Q8(value) ((int16_t)((value) >> Q8_SHIFT))
 
 #define ENEMY_MEDIUM_SPEED_Q8 ((int16_t)TO_Q8(2))
@@ -97,8 +104,8 @@ typedef struct {
     uint8_t spiral_step;
     uint16_t timer;
     uint16_t fire_timer;
-    int32_t x_q8;
-    int32_t y_q8;
+    int16_t x_q8;
+    int16_t y_q8;
     int16_t vx_q8;
     int16_t vy_q8;
     int16_t target_x;
@@ -118,10 +125,10 @@ typedef struct {
     uint8_t formation_columns;
     uint8_t type_group_rank;
     bool formation_started;
-    int32_t formation_anchor_x_q8;
-    int32_t formation_anchor_y_q8;
+    int16_t formation_anchor_x_q8;
+    int16_t formation_anchor_y_q8;
     int16_t formation_vx_q8;
-    int32_t formation_step_down_remaining_q8;
+    int16_t formation_step_down_remaining_q8;
 } WaveGroup;
 
 static WaveGroup wave_groups[MAX_ENEMIES];
@@ -149,10 +156,10 @@ static uint8_t wave_primary_type;
 static uint8_t wave_spawn_count;
 static uint8_t wave_spawn_types[MAX_ENEMIES];
 static uint8_t active_wave_id;
-static int32_t formation_anchor_x_q8;
-static int32_t formation_anchor_y_q8;
+static int16_t formation_anchor_x_q8;
+static int16_t formation_anchor_y_q8;
 static int16_t formation_vx_q8;
-static int32_t formation_step_down_remaining_q8;
+static int16_t formation_step_down_remaining_q8;
 static uint8_t formation_columns;
 static uint8_t type5_spawn_count;
 static uint8_t type5_spawned_count;
@@ -168,17 +175,17 @@ static uint8_t game_over_letter_start_delay;
 static bool bonus_icon_anim_active;
 static bool bonus_icon_anim_complete;
 static uint8_t bonus_icon_anim_type;
-static int32_t bonus_icon_anim_x_q8;
-static int32_t bonus_icon_anim_y_q8;
-static int32_t bonus_icon_anim_target_x_q8;
-static int32_t bonus_icon_anim_target_y_q8;
+static int16_t bonus_icon_anim_x_q8;
+static int16_t bonus_icon_anim_y_q8;
+static int16_t bonus_icon_anim_target_x_q8;
+static int16_t bonus_icon_anim_target_y_q8;
 
 typedef struct {
     bool active;
-    int32_t x_q8;
-    int32_t y_q8;
-    int32_t target_x_q8;
-    int32_t target_y_q8;
+    int16_t x_q8;
+    int16_t y_q8;
+    int16_t target_x_q8;
+    int16_t target_y_q8;
     uint8_t frame;
 } GameOverLetter;
 
@@ -333,13 +340,17 @@ static bool enemy_is_offscreen(uint8_t slot)
     );
 }
 
+// dx/dy/adx/ady/scale stay 16-bit (compare/abs/max are cheap that way); only
+// the (dx * speed_q8) product needs the 32-bit intermediate -- it can
+// legitimately exceed int16_t range even though every input and the final
+// stored result fit -- so that one step, and only that step, widens.
 static bool enemy_try_move_towards(uint8_t slot, int16_t target_x, int16_t target_y, int16_t speed_q8)
 {
-    int32_t dx = TO_Q8(target_x) - enemies[slot].x_q8;
-    int32_t dy = TO_Q8(target_y) - enemies[slot].y_q8;
-    int32_t adx = (dx < 0) ? -dx : dx;
-    int32_t ady = (dy < 0) ? -dy : dy;
-    int32_t scale = (adx > ady) ? adx : ady;
+    int16_t dx = (int16_t)(TO_Q8(target_x) - enemies[slot].x_q8);
+    int16_t dy = (int16_t)(TO_Q8(target_y) - enemies[slot].y_q8);
+    int16_t adx = (int16_t)((dx < 0) ? -dx : dx);
+    int16_t ady = (int16_t)((dy < 0) ? -dy : dy);
+    int16_t scale = (adx > ady) ? adx : ady;
 
     if (adx <= speed_q8 && ady <= speed_q8) {
         enemies[slot].x_q8 = TO_Q8(target_x);
@@ -351,8 +362,8 @@ static bool enemy_try_move_towards(uint8_t slot, int16_t target_x, int16_t targe
         return true;
     }
 
-    enemies[slot].x_q8 += (int32_t)((dx * speed_q8) / scale);
-    enemies[slot].y_q8 += (int32_t)((dy * speed_q8) / scale);
+    enemies[slot].x_q8 = (int16_t)(enemies[slot].x_q8 + (int16_t)(((int32_t)dx * speed_q8) / scale));
+    enemies[slot].y_q8 = (int16_t)(enemies[slot].y_q8 + (int16_t)(((int32_t)dy * speed_q8) / scale));
     return false;
 }
 
@@ -366,11 +377,11 @@ static void enemy_compute_aim_velocity(
     int16_t *vy_q8
 )
 {
-    int32_t dx = (int32_t)target_x - origin_x;
-    int32_t dy = (int32_t)target_y - origin_y;
-    int32_t adx = (dx < 0) ? -dx : dx;
-    int32_t ady = (dy < 0) ? -dy : dy;
-    int32_t scale = (adx > ady) ? adx : ady;
+    int16_t dx = (int16_t)(target_x - origin_x);
+    int16_t dy = (int16_t)(target_y - origin_y);
+    int16_t adx = (int16_t)((dx < 0) ? -dx : dx);
+    int16_t ady = (int16_t)((dy < 0) ? -dy : dy);
+    int16_t scale = (adx > ady) ? adx : ady;
 
     if (scale == 0) {
         *vx_q8 = 0;
@@ -378,8 +389,8 @@ static void enemy_compute_aim_velocity(
         return;
     }
 
-    *vx_q8 = (int16_t)((dx * speed_q8) / scale);
-    *vy_q8 = (int16_t)((dy * speed_q8) / scale);
+    *vx_q8 = (int16_t)(((int32_t)dx * speed_q8) / scale);
+    *vy_q8 = (int16_t)(((int32_t)dy * speed_q8) / scale);
 }
 
 static void enemy_get_bullet_origin(uint8_t slot, int16_t *x, int16_t *y)
@@ -402,13 +413,13 @@ static int16_t enemy_clamp16(int16_t value, int16_t min_value, int16_t max_value
     return value;
 }
 
-static bool enemy_q8_move_towards(int32_t *x_q8, int32_t *y_q8, int32_t target_x_q8, int32_t target_y_q8, int16_t speed_q8)
+static bool enemy_q8_move_towards(int16_t *x_q8, int16_t *y_q8, int16_t target_x_q8, int16_t target_y_q8, int16_t speed_q8)
 {
-    int32_t dx = target_x_q8 - *x_q8;
-    int32_t dy = target_y_q8 - *y_q8;
-    int32_t adx = (dx < 0) ? -dx : dx;
-    int32_t ady = (dy < 0) ? -dy : dy;
-    int32_t scale = (adx > ady) ? adx : ady;
+    int16_t dx = (int16_t)(target_x_q8 - *x_q8);
+    int16_t dy = (int16_t)(target_y_q8 - *y_q8);
+    int16_t adx = (int16_t)((dx < 0) ? -dx : dx);
+    int16_t ady = (int16_t)((dy < 0) ? -dy : dy);
+    int16_t scale = (adx > ady) ? adx : ady;
 
     if (adx <= speed_q8 && ady <= speed_q8) {
         *x_q8 = target_x_q8;
@@ -420,8 +431,8 @@ static bool enemy_q8_move_towards(int32_t *x_q8, int32_t *y_q8, int32_t target_x
         return true;
     }
 
-    *x_q8 += (dx * speed_q8) / scale;
-    *y_q8 += (dy * speed_q8) / scale;
+    *x_q8 = (int16_t)(*x_q8 + (int16_t)(((int32_t)dx * speed_q8) / scale));
+    *y_q8 = (int16_t)(*y_q8 + (int16_t)(((int32_t)dy * speed_q8) / scale));
     return false;
 }
 

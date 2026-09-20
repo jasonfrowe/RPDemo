@@ -20,8 +20,8 @@ typedef enum {
 typedef struct {
     bool               active;
     projectile_owner_t owner;
-    int32_t            x_q8;
-    int32_t            y_q8;
+    int16_t            x_q8;
+    int16_t            y_q8;
     int16_t            vx_q8;
     int16_t            vy_q8;
     uint8_t            frame_index;
@@ -30,8 +30,13 @@ typedef struct {
 
 static Projectile projectiles[MAX_PROJECTILES];
 
-#define Q8_SHIFT 8
-#define TO_Q8(px) ((int32_t)(px) * (1 << Q8_SHIFT))
+// 4 fractional bits, not 8 -- see player_controller.c's/enemy.c's Q8_SHIFT
+// comment. This shift must match enemy.c's (and gameplay_boss.c's
+// BOSS_PROJECTILE_VY_Q8, which has no local TO_Q8 to auto-adjust): all three
+// files' velocities land directly in this struct's vx_q8/vy_q8 and are
+// interpreted at whatever scale is defined here.
+#define Q8_SHIFT 4
+#define TO_Q8(px) ((int16_t)((px) * (1 << Q8_SHIFT)))
 #define PROJECTILE_HITBOX_OFFSET_X 3
 #define PROJECTILE_HITBOX_OFFSET_Y 2
 #define PROJECTILE_HITBOX_WIDTH 2
