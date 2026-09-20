@@ -18,13 +18,25 @@
 #define PLAYER_RESPAWN_RISE_SPEED_PX 2
 #define PLAYER_RESPAWN_BLINK_TOGGLE_FRAMES 6
 
-// Internal: convert speed level to Q8 fixed-point (1 level = 0.25 px = 64 Q8 units).
-#define Q8_SHIFT 8
-#define SPEED_TO_Q8(level) ((int32_t)(level) * 64)
+// Internal fixed-point position: 4 fractional bits (1/16 px), not the 8 the
+// "_q8" naming suggests -- the 6502 has no hardware multiply/wide-add, and
+// 8 fractional bits (needing int32_t to hold a 320px-wide screen) meant
+// every position add/compare/shift in the per-entity update loops
+// (player, all 40 projectiles, all 32 enemies) was 32-bit arithmetic for no
+// visual benefit: 1/16 px is already far finer than perceptible at 60 Hz,
+// and every speed actually used is a whole multiple of 0.25 px, which 4
+// fractional bits still represents exactly (0.25 px = 4 units). Narrowed to
+// int16_t, which comfortably covers this screen (320 << 4 = 5120) with a
+// lot of headroom for off-screen spawn margins. Kept the "_q8" names
+// (TO_Q8, x_q8, ...) across the codebase rather than a mechanical rename,
+// to keep this change reviewable -- read them as "the fixed-point position
+// unit", not literally 8 fractional bits.
+#define Q8_SHIFT 4
+#define SPEED_TO_Q8(level) ((int16_t)((level) * 4))
 
 static int     player_speed  = PLAYER_DEFAULT_SPEED;
-static int32_t player_x_q8;
-static int32_t player_y_q8;
+static int16_t player_x_q8;
+static int16_t player_y_q8;
 static uint8_t player_health = PLAYER_MAX_HEALTH;
 static uint8_t hit_cooldown = 0;
 static uint8_t damage_flash_timer = 0;
@@ -77,8 +89,8 @@ void player_controller_reset_for_new_run(void)
 {
     player_speed = PLAYER_DEFAULT_SPEED;
     player_speed_cap = PLAYER_DEFAULT_SPEED;
-    player_x_q8 = ((int32_t)((SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX) / 2)) << Q8_SHIFT;
-    player_y_q8 = ((int32_t)((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) * 2 / 3)) << Q8_SHIFT;
+    player_x_q8 = (int16_t)(((SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX) / 2) << Q8_SHIFT);
+    player_y_q8 = (int16_t)(((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) * 2 / 3) << Q8_SHIFT);
     player_health = PLAYER_MAX_HEALTH;
     hit_cooldown = 0;
     damage_flash_timer = 0;
@@ -176,8 +188,8 @@ void player_controller_set_position(int16_t x, int16_t y)
         y = (int16_t)(SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX);
     }
 
-    player_x_q8 = ((int32_t)x) << Q8_SHIFT;
-    player_y_q8 = ((int32_t)y) << Q8_SHIFT;
+    player_x_q8 = (int16_t)(x << Q8_SHIFT);
+    player_y_q8 = (int16_t)(y << Q8_SHIFT);
     sprite_mode5_set_position(x, y);
 }
 
@@ -211,8 +223,8 @@ void player_controller_begin_respawn(void)
     prev_speed_down = false;
     prev_speed_up = false;
 
-    player_x_q8 = ((int32_t)start_x) << Q8_SHIFT;
-    player_y_q8 = ((int32_t)bottom_y) << Q8_SHIFT;
+    player_x_q8 = (int16_t)(start_x << Q8_SHIFT);
+    player_y_q8 = (int16_t)(bottom_y << Q8_SHIFT);
 
     sprite_mode5_set_damage_flash(false);
     sprite_mode5_set_frame(0);
@@ -414,7 +426,7 @@ void player_controller_update(void)
             if (draw_y < target_y) {
                 draw_y = target_y;
             }
-            player_y_q8 = ((int32_t)draw_y) << Q8_SHIFT;
+            player_y_q8 = (int16_t)(draw_y << Q8_SHIFT);
         }
 
         sprite_mode5_set_frame(0);
@@ -457,7 +469,7 @@ void player_controller_update(void)
         fire_cooldown = player_fire_rate;
     }
 
-    int32_t speed_q8 = SPEED_TO_Q8(player_speed);
+    int16_t speed_q8 = SPEED_TO_Q8(player_speed);
 
     if (moving_up)    player_y_q8 -= speed_q8;
     if (moving_down)  player_y_q8 += speed_q8;
@@ -474,13 +486,13 @@ void player_controller_update(void)
         sprite_mode5_set_frame(0);
     }
 
-    int32_t max_x_q8 = ((int32_t)(SCREEN_WIDTH  - PLAYER_SPRITE_SIZE_PX)) << Q8_SHIFT;
-    int32_t max_y_q8 = ((int32_t)(SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX)) << Q8_SHIFT;
+    int16_t max_x_q8 = (int16_t)((SCREEN_WIDTH  - PLAYER_SPRITE_SIZE_PX) << Q8_SHIFT);
+    int16_t max_y_q8 = (int16_t)((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) << Q8_SHIFT);
 
     if (player_x_q8 < 0)         player_x_q8 = 0;
     if (player_x_q8 > max_x_q8) player_x_q8 = max_x_q8;
-    if (player_y_q8 < ((int32_t)HUD_TOP_PX << Q8_SHIFT)) {
-        player_y_q8 = ((int32_t)HUD_TOP_PX << Q8_SHIFT);
+    if (player_y_q8 < (int16_t)(HUD_TOP_PX << Q8_SHIFT)) {
+        player_y_q8 = (int16_t)(HUD_TOP_PX << Q8_SHIFT);
     }
     if (player_y_q8 > max_y_q8) player_y_q8 = max_y_q8;
 
