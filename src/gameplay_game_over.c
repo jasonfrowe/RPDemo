@@ -48,13 +48,22 @@ typedef enum {
 #define VICTORY_PARADE_ROUNDS 7
 #define VICTORY_PARADE_ORBIT_ENEMY_COUNT 4
 #define VICTORY_PARADE_ORBIT_POINTS 16
-#define VICTORY_PARADE_ORBIT_LOOPS 2
+// 5 loops * 16 points * 3 frames/point = 240 frames = 4 seconds at 60Hz.
+#define VICTORY_PARADE_ORBIT_LOOPS 5
 #define VICTORY_PARADE_ORBIT_STEP_FRAMES 3
 #define VICTORY_PARADE_BOSS_ENTER_SPEED_PX 2
 #define VICTORY_PARADE_BOSS_EXIT_SPEED_PX 3
 #define VICTORY_PARADE_BOSS_W (BOSS_GRID_COLS * ENEMY_SPRITE_SIZE_PX)
 #define VICTORY_PARADE_BOSS_H (BOSS_GRID_ROWS * ENEMY_SPRITE_SIZE_PX)
 #define VICTORY_PARADE_ENEMY_HALF (ENEMY_SPRITE_SIZE_PX / 2)
+// BOSS_START_X/Y (constants.h) is where a real fight rests the boss --
+// right under the HUD, which on this screen is exactly where the "STAR
+// HOPPER" logo and PRESS START/HISCORE text live (baked into the HUD ROM
+// template restored at the top of this screen, not drawn by game code).
+// The parade needs to clear all of that, so it gets its own, lower resting
+// row instead of reusing BOSS_START_Y -- BOSS_START_X (horizontal
+// centering) is still correct as-is.
+#define VICTORY_PARADE_BOSS_TARGET_Y 152
 
 // A 16-point oval around the boss (wider than tall, so it clears a
 // 48x32px boss without the top/bottom points running into the HUD or
@@ -145,8 +154,8 @@ static void victory_parade_update(void)
     switch (parade_phase) {
         case VICTORY_PARADE_ENTER:
             parade_boss_y = (int16_t)(parade_boss_y + VICTORY_PARADE_BOSS_ENTER_SPEED_PX);
-            if (parade_boss_y >= BOSS_START_Y) {
-                parade_boss_y = BOSS_START_Y;
+            if (parade_boss_y >= VICTORY_PARADE_BOSS_TARGET_Y) {
+                parade_boss_y = VICTORY_PARADE_BOSS_TARGET_Y;
                 parade_orbit_index = 0;
                 parade_orbit_tick = 0;
                 parade_orbit_loops = 0;
@@ -174,13 +183,14 @@ static void victory_parade_update(void)
                 sprite_mode5_hide_boss();
                 victory_parade_hide_enemies();
 
-                parade_round++;
-                if (parade_round >= VICTORY_PARADE_ROUNDS) {
-                    parade_phase = VICTORY_PARADE_DONE;
-                } else {
-                    parade_boss_y = (int16_t)(-VICTORY_PARADE_BOSS_H);
-                    parade_phase = VICTORY_PARADE_ENTER;
-                }
+                // Loops forever rather than stopping after level 7 -- the
+                // win screen sits until the timeout regardless (see
+                // gameplay_update_game_over_state()), so this just keeps
+                // the sign-off going the whole time instead of leaving a
+                // static screen for however long the player lingers.
+                parade_round = (uint8_t)((parade_round + 1) % VICTORY_PARADE_ROUNDS);
+                parade_boss_y = (int16_t)(-VICTORY_PARADE_BOSS_H);
+                parade_phase = VICTORY_PARADE_ENTER;
             }
             break;
 
