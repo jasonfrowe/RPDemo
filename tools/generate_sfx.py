@@ -295,6 +295,22 @@ def sfx_pickup() -> SfxBuilder:
     return b
 
 
+def sfx_tally() -> SfxBuilder:
+    """Bonus-stage score/kill tally tick: the same ascending swoop as
+    sfx_pickup(), quieted by +6 TL on the carrier (FM/connection=0, so the
+    carrier's TL alone sets overall loudness -- see patch()'s docstring).
+    A dedicated clip rather than reusing PickUp directly, since this one
+    retriggers rapidly during the tally and needed to come down in the mix
+    without touching the volume of an actual pickup being collected."""
+    b = SfxBuilder(7)
+    b.patch(mod_mult=1, mod_tl=10, mod_ar=15, mod_dr=8, mod_sl=3, mod_rr=8, mod_wave=0,
+            car_mult=1, car_tl=6, car_ar=15, car_dr=7, car_sl=4, car_rr=7, car_wave=0,
+            feedback=3, connection=0)
+    b.sweep(440, 1320, 140, steps=10)
+    b.key_off()
+    return b
+
+
 def sfx_lvlclear() -> SfxBuilder:
     """Level-complete celebration: a short 4-note ascending major fanfare
     (C5-E5-G5-C6), each note explicitly re-struck (key_off between
@@ -354,6 +370,29 @@ def sfx_extralife() -> SfxBuilder:
     return b
 
 
+def sfx_victory() -> SfxBuilder:
+    """Level-7 victory fanfare: a longer, grander sibling of sfx_lvlclear's
+    4-note riff -- same additive/chime patch for a consistent "fanfare"
+    voice across the game, but a longer climbing run (C5-E5-G5-C6-G5-C6)
+    into a held, tremolo-shimmered top note (see tremolo()'s docstring)
+    so the whole thing resolves into a shimmer instead of just stopping,
+    for the one screen in the game that should feel like the biggest
+    payoff."""
+    b = SfxBuilder(7)
+    b.patch(mod_mult=1, mod_tl=4, mod_ar=15, mod_dr=6, mod_sl=4, mod_rr=6, mod_wave=0,
+            car_mult=2, car_tl=0, car_ar=15, car_dr=5, car_sl=5, car_rr=5, car_wave=0,
+            feedback=3, connection=1)
+    for freq in (523.25, 659.25, 783.99, 1046.50, 783.99, 1046.50):  # C5 E5 G5 C6 G5 C6
+        b.note_on(freq)
+        b.wait_ms(130)
+        b.key_off()
+        b.wait_ms(20)
+    b.note_on(1318.51)  # E6 -- final held note
+    b.tremolo(cycles=8, curve=(0, 2, 5, 9, 14, 9, 5, 2), step_ms=10)
+    b.key_off()
+    return b
+
+
 SFX: List[Tuple[str, str, Callable[[], SfxBuilder]]] = [
     ("PlyrFire", "Player firing (lowest priority -- fired constantly)", sfx_plyrfire),
     ("EnmyFire", "Enemy firing", sfx_enmyfire),
@@ -361,9 +400,11 @@ SFX: List[Tuple[str, str, Callable[[], SfxBuilder]]] = [
     ("PlyrHit", "Player takes damage but survives", sfx_plyrhit),
     ("PlyrDie", "Player destroyed", sfx_plyrdie),
     ("PickUp", "Energy/speed/power pickup collected", sfx_pickup),
+    ("Tally", "Bonus-stage score/kill tally tick (PickUp, -6 TL)", sfx_tally),
     ("LvlClear", "Level-complete celebration fanfare", sfx_lvlclear),
     ("LowEnrgy", "Low-energy warning beep (channel 7, retriggered by sfx.c)", sfx_lowenrgy),
     ("XtraLife", "Extra life awarded (RPPacman-inspired tremolo shimmer)", sfx_extralife),
+    ("Victory", "Level-7 win celebration fanfare", sfx_victory),
 ]
 
 
@@ -411,6 +452,25 @@ def write_xram_bundle() -> None:
         lines.append(f"#define SFX_{macro}_LEN    {len(data)}")
         blob += data
         offset += len(data)
+
+    # SFX_DATA_SIZE (constants.h) determines where SPRITE_DATA_END --
+    # and every runtime sprite/tile config chained after it
+    # (PLAYER_CONFIG, TILE_*_CONFIG, ...) -- lands in XRAM. Those configs'
+    # fields are all 16-bit (int/unsigned, see rp6502.h's vga_mode2/5
+    # struct typedefs), and xram0_struct_set()'s underlying RIA register
+    # writes need that base address to be even, or every field after the
+    # first is written one byte off from where the video hardware expects
+    # it -- total, silent corruption of sprite positions and tilemaps
+    # game-wide, not just of SFX playback. One clip landing at an odd
+    # length (this bundle's is whatever the sum of all clips' individual
+    # byte counts happens to be, not something authored) is enough to
+    # trip this, so pad the whole bundle to an even size here rather than
+    # requiring every clip to stay individually even. The pad byte sits
+    # past every clip's own 0x66 end marker, so no reader ever reaches it.
+    if offset % 2 != 0:
+        blob += bytes([0x00])
+        offset += 1
+
     lines.append("")
     lines.append(f"#define SFX_DATA_SIZE {offset}")
     lines.append("")

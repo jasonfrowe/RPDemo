@@ -1,6 +1,7 @@
 #ifndef SFX_H
 #define SFX_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "constants.h"   // SFX_DATA
@@ -17,9 +18,9 @@
 // for the engine.
 #define SFX_PRIORITY_FIRE       1 // PlyrFire (ch7) / EnmyFire (ch8)
 #define SFX_PRIORITY_LOW_ENERGY 2 // LowEnrgy (ch7, periodic retrigger)
-#define SFX_PRIORITY_PICKUP     2 // PickUp (ch7)
+#define SFX_PRIORITY_PICKUP     2 // PickUp, Tally (ch7)
 #define SFX_PRIORITY_DESTROYED  3 // EnmyDie (ch8)
-#define SFX_PRIORITY_TOP        4 // PlyrHit, PlyrDie, XtraLife, LvlClear (ch7)
+#define SFX_PRIORITY_TOP        4 // PlyrHit, PlyrDie, XtraLife, LvlClear, Victory (ch7)
 
 // Absolute XRAM addresses of each clip's command stream -- SFX_DATA
 // (constants.h) plus its auto-generated offset (sfx_layout.h). What
@@ -30,14 +31,17 @@
 #define SFX_PLYRHIT_ADDR  (SFX_DATA + SFX_PLYRHIT_OFFSET)
 #define SFX_PLYRDIE_ADDR  (SFX_DATA + SFX_PLYRDIE_OFFSET)
 #define SFX_PICKUP_ADDR   (SFX_DATA + SFX_PICKUP_OFFSET)
+#define SFX_TALLY_ADDR    (SFX_DATA + SFX_TALLY_OFFSET)
 #define SFX_LVLCLEAR_ADDR (SFX_DATA + SFX_LVLCLEAR_OFFSET)
 #define SFX_LOWENRGY_ADDR (SFX_DATA + SFX_LOWENRGY_OFFSET)
 #define SFX_XTRALIFE_ADDR (SFX_DATA + SFX_XTRALIFE_OFFSET)
+#define SFX_VICTORY_ADDR  (SFX_DATA + SFX_VICTORY_OFFSET)
 
 void sfx_init(void);
 void sfx_play_player(uint16_t sfx_addr, uint8_t priority); // channel 7
 void sfx_play_enemy(uint16_t sfx_addr, uint8_t priority);  // channel 8
 void sfx_update(void);
 void sfx_stop(void);
+void sfx_set_low_energy_muted(bool muted);
 
 #endif

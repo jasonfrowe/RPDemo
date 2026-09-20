@@ -32,8 +32,10 @@ rp6502_asset(RPStarHopper Level_05.vgm music/Level_05.vgm)
 rp6502_asset(RPStarHopper Level_06.vgm music/Level_06.vgm)
 rp6502_asset(RPStarHopper Level_07.vgm music/Level_07.vgm)
 rp6502_asset(RPStarHopper Boss.vgm music/Boss.vgm)
+rp6502_asset(RPStarHopper BossFinal.vgm music/BossFinal.vgm)
 rp6502_asset(RPStarHopper Bonus.vgm music/Bonus.vgm)
 rp6502_asset(RPStarHopper Gameover.vgm music/Gameover.vgm)
+rp6502_asset(RPStarHopper Victory.vgm music/Victory.vgm)
 
 
 

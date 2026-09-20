@@ -120,10 +120,17 @@ TRACKS: list = [
     ),
     TrackSpec(
         resource="Gameover",
-        description="Game over (win or lose)",
+        description="Game over (loss only -- see Victory for the win)",
         aliases=["gameover"],
         mood=MoodPreset(key_root=2, scale="minor", bpm=100, intensity=0.55, target_seconds=80.0,
                          lead_octave=4, use_drums=False),
+    ),
+    TrackSpec(
+        resource="Victory",
+        description="Victory / You Win ending (level 7 boss defeated)",
+        aliases=["victory", "win"],
+        mood=MoodPreset(key_root=0, scale="major", bpm=152, intensity=0.75, target_seconds=90.0,
+                         lead_octave=5, arp_octave=5),
     ),
 ]
 

@@ -115,6 +115,7 @@ static sfx_channel_t g_player_ch = {.silence_reg = 0xB7};
 static sfx_channel_t g_enemy_ch = {.silence_reg = 0xB8};
 
 static uint16_t g_low_energy_timer = 0;
+static bool g_low_energy_muted = false;
 
 static void sfx_channel_init(sfx_channel_t *ch) {
     ch->player.active = false;
@@ -180,7 +181,7 @@ void sfx_play_enemy(uint16_t sfx_addr, uint8_t priority) {
 }
 
 static void sfx_update_low_energy(void) {
-    if (!player_controller_is_low_health()) {
+    if (g_low_energy_muted || !player_controller_is_low_health()) {
         g_low_energy_timer = 0;
         return;
     }
@@ -215,4 +216,12 @@ void sfx_stop(void) {
     sfx_channel_stop(&g_player_ch);
     sfx_channel_stop(&g_enemy_ch);
     g_low_energy_timer = 0;
+}
+
+// The level-bonus screen tallies score over the same player channel this
+// warning periodically retriggers on -- muting it there keeps the beep
+// from competing with (or just distracting from) the payout SFX while the
+// player's health bar is quietly refilling in the background.
+void sfx_set_low_energy_muted(bool muted) {
+    g_low_energy_muted = muted;
 }

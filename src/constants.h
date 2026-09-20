@@ -111,6 +111,7 @@
 #define BOSS_HUD_HEALTH_Y 25
 
 #define BOSS_STAGE_MUSIC_TRACK "ROM:Boss.vgm"
+#define BOSS_FINAL_STAGE_MUSIC_TRACK "ROM:BossFinal.vgm" // Level 7's boss only -- the final boss
 
 #define ENEMY_DATA             (PROJECTILE_DATA + PROJECTILE_DATA_SIZE) // Address for enemy sprite data
 #define ENEMY_DATA_SIZE        0x5800U              // 22528 bytes (176 frames 16x16 at 4bpp)

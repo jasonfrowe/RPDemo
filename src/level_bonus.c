@@ -4,6 +4,7 @@
 
 #include "constants.h"
 #include "enemy.h"
+#include "input.h"
 #include "music.h"
 #include "player_controller.h"
 #include "projectile.h"
@@ -27,6 +28,11 @@ typedef enum {
 #define BONUS_ROW_HOLD_FRAMES 36
 #define BONUS_PAYOUT_STEP_FRAMES 3
 #define BONUS_HEALTH_STEP_FRAMES 6
+// Holding/mashing fire runs the whole phase machine this many times per
+// frame instead of once -- fast enough to visibly tear through a long
+// tally or payout in under a second, slow enough over a couple of frames
+// that it still reads as "counting fast" rather than an instant cut.
+#define BONUS_FAST_FORWARD_STEPS 8
 #define BONUS_BOSS_POINTS 10000
 #define BONUS_BOSS_HEALTH_BONUS 6
 #define BONUS_BASE_HEALTH_RECOVERY_CAP 24
@@ -131,7 +137,21 @@ void level_bonus_begin(uint8_t current_level, bool boss_defeated)
     bonus_phase = BONUS_PHASE_ICON_FLY_IN;
 }
 
+static void level_bonus_advance(uint8_t *hud_health_last);
+
 void level_bonus_update(uint8_t *hud_health_last)
+{
+    uint8_t steps = is_action_pressed(0, ACTION_BTN_X) ? BONUS_FAST_FORWARD_STEPS : 1;
+
+    for (uint8_t step = 0; step < steps; step++) {
+        if (bonus_phase == BONUS_PHASE_DONE) {
+            break;
+        }
+        level_bonus_advance(hud_health_last);
+    }
+}
+
+static void level_bonus_advance(uint8_t *hud_health_last)
 {
     switch (bonus_phase) {
         case BONUS_PHASE_IDLE:
@@ -163,6 +183,7 @@ void level_bonus_update(uint8_t *hud_health_last)
 
                 if (bonus_row_count_display < bonus_row_target_kills) {
                     bonus_row_count_display++;
+                    sfx_play_player(SFX_TALLY_ADDR, SFX_PRIORITY_PICKUP);
                 }
 
                 bonus_row_subtotal = (uint16_t)(bonus_row_count_display * bonus_row_points_each);
@@ -225,6 +246,7 @@ void level_bonus_update(uint8_t *hud_health_last)
 
                 bonus_pending_total -= payout_step;
                 score_add_points(payout_step);
+                sfx_play_player(SFX_TALLY_ADDR, SFX_PRIORITY_PICKUP);
                 tile_mode2_set_bonus_pending_total(bonus_pending_total);
             } else {
                 bonus_phase = BONUS_PHASE_REFILL_HEALTH;
@@ -238,6 +260,7 @@ void level_bonus_update(uint8_t *hud_health_last)
                     bonus_health_tick = 0;
                     player_controller_heal(1);
                     bonus_health_pending--;
+                    sfx_play_player(SFX_TALLY_ADDR, SFX_PRIORITY_PICKUP);
                     tile_mode2_set_health(player_controller_get_health());
                     if (hud_health_last != NULL) {
                         *hud_health_last = player_controller_get_health();
