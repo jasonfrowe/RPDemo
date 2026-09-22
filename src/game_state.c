@@ -58,8 +58,11 @@ game_transition_t game_state_handle_start_button(bool start_pressed)
     }
 
     if (g_state == GAME_STATE_GAME_OVER) {
-        g_state = GAME_STATE_PLAYING;
-        return GAME_TRANSITION_START_GAME;
+        // Start on the game-over/victory screen returns to the title
+        // screen (matching what the timeout already does), not straight
+        // into a new run.
+        g_state = GAME_STATE_TITLE;
+        return GAME_TRANSITION_RETURN_TO_TITLE;
     }
 
     return GAME_TRANSITION_NONE;

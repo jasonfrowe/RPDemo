@@ -314,6 +314,7 @@ static void start_victory_ending(void)
         return;
     }
 
+    score_commit_hiscore();
     gameplay_boss_reset();
     projectile_init();
     enemy_init();
