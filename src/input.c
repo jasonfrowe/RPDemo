@@ -9,141 +9,90 @@
 
 #define JOYSTICK_CONFIG_FILE "JOYSTICK_SH.DAT"
 
+// Keycodes 0-3 of the keyboard bitmap are state, not keys: no key pressed,
+// and the Num, Caps and Scroll Lock lamps.
+#define KEYBOARD_STATE_BITS ((1 << KEYBOARD_NO_KEY) | (1 << KEYBOARD_NUM_LOCK) | \
+                             (1 << KEYBOARD_CAPS_LOCK) | (1 << KEYBOARD_SCROLL_LOCK))
+
 typedef struct {
     uint8_t action_id;
     uint8_t field;
     uint8_t mask;
 } JoystickMapping;
 
-// Button mapping storage
-ButtonMapping button_mappings[GAMEPAD_COUNT][ACTION_COUNT];
+// A mask tested against one field of a gamepad's state. A zero mask is unbound.
+typedef struct {
+    uint8_t field;
+    uint8_t mask;
+} GamepadBinding;
 
-// Gamepad state, copied from XRAM each frame
-gamepad_t gamepad;
+// The standard bindings. Moves read both the left stick and the D-Pad.
+static const GamepadBinding default_bindings[GP_CONTROL_COUNT][2] = {
+    [GP_CONTROL_UP]     = {{GP_FIELD_STICKS, GAMEPAD_LSTICK_UP},    {GP_FIELD_DPAD, GAMEPAD_DPAD_UP}},
+    [GP_CONTROL_DOWN]   = {{GP_FIELD_STICKS, GAMEPAD_LSTICK_DOWN},  {GP_FIELD_DPAD, GAMEPAD_DPAD_DOWN}},
+    [GP_CONTROL_LEFT]   = {{GP_FIELD_STICKS, GAMEPAD_LSTICK_LEFT},  {GP_FIELD_DPAD, GAMEPAD_DPAD_LEFT}},
+    [GP_CONTROL_RIGHT]  = {{GP_FIELD_STICKS, GAMEPAD_LSTICK_RIGHT}, {GP_FIELD_DPAD, GAMEPAD_DPAD_RIGHT}},
+    [GP_CONTROL_A]      = {{GP_FIELD_BTN0, GAMEPAD_BTN0_A}},
+    [GP_CONTROL_B]      = {{GP_FIELD_BTN0, GAMEPAD_BTN0_B}},
+    [GP_CONTROL_X]      = {{GP_FIELD_BTN0, GAMEPAD_BTN0_X}},
+    [GP_CONTROL_Y]      = {{GP_FIELD_BTN0, GAMEPAD_BTN0_Y}},
+    [GP_CONTROL_SELECT] = {{GP_FIELD_BTN1, GAMEPAD_BTN1_SELECT}},
+    [GP_CONTROL_START]  = {{GP_FIELD_BTN1, GAMEPAD_BTN1_START}},
+};
+
+// Bindings loaded from JOYSTICK_SH.DAT. They add to the standard bindings,
+// so the D-Pad, the left stick and the usual buttons always work.
+static GamepadBinding saved_bindings[GP_CONTROL_COUNT];
+
+static const uint8_t up_keys[]    = {KEY_W, KEY_UP,    KEY_KP8, KEY_KP7, KEY_KP9};
+static const uint8_t down_keys[]  = {KEY_S, KEY_DOWN,  KEY_KP2, KEY_KP1, KEY_KP3};
+static const uint8_t left_keys[]  = {KEY_A, KEY_LEFT,  KEY_KP4, KEY_KP7, KEY_KP1};
+static const uint8_t right_keys[] = {KEY_D, KEY_RIGHT, KEY_KP6, KEY_KP9, KEY_KP3};
+static const uint8_t pause_keys[] = {KEY_P, KEY_PAUSE};
 
 // Keyboard state, copied from XRAM each frame
 static keyboard_t keyboard;
 
-static bool load_button_mappings(uint8_t player_id)
+// Every key that fires: all keys except the move and pause keys.
+static uint8_t fire_keys[sizeof(keyboard.keys)];
+
+// One bit per GameAction, computed once per frame by handle_input()
+static uint8_t actions;
+
+static void load_button_mappings(void)
 {
     int fd = open(JOYSTICK_CONFIG_FILE, O_RDONLY);
     if (fd < 0) {
-        return false;
+        return;
     }
 
-    uint8_t count_byte;
-    if (read(fd, &count_byte, 1) != 1) {
-        close(fd);
-        return false;
-    }
-    int count = count_byte;
-    if (count <= 0 || count > ACTION_COUNT) {
-        close(fd);
-        return false;
-    }
-
-    for (int i = 0; i < count; i++) {
-        JoystickMapping mapping;
-        if (read(fd, &mapping, sizeof(JoystickMapping)) != sizeof(JoystickMapping)) {
-            close(fd);
-            return false;
+    uint8_t count;
+    if (read(fd, &count, 1) == 1 && count != 0 && count <= GP_CONTROL_COUNT) {
+        for (uint8_t i = 0; i < count; i++) {
+            JoystickMapping mapping;
+            if (read(fd, &mapping, sizeof(JoystickMapping)) != sizeof(JoystickMapping)) {
+                break;
+            }
+            if (mapping.action_id >= GP_CONTROL_COUNT || mapping.field > GP_FIELD_BTN1) {
+                continue;
+            }
+            // The upper bits of the dpad field are the pad's type and status.
+            if (mapping.field == GP_FIELD_DPAD) {
+                mapping.mask &= GP_DPAD_MASK;
+            }
+            saved_bindings[mapping.action_id].field = mapping.field;
+            saved_bindings[mapping.action_id].mask = mapping.mask;
         }
-
-        if (mapping.action_id >= ACTION_COUNT || mapping.field > GP_FIELD_BTN1) {
-            continue;
-        }
-
-        button_mappings[player_id][mapping.action_id].gamepad_button = mapping.field;
-        button_mappings[player_id][mapping.action_id].gamepad_mask = mapping.mask;
-        button_mappings[player_id][mapping.action_id].gamepad_button2 = 0;
-        button_mappings[player_id][mapping.action_id].gamepad_mask2 = 0;
     }
 
     close(fd);
-    return true;
 }
 
-/**
- * Reset to default button mappings for a specific player
- */
-void reset_button_mappings(uint8_t player_id)
+static void clear_fire_keys(const uint8_t *codes, uint8_t count)
 {
-    if (player_id >= GAMEPAD_COUNT) return;
-
-    // Zero out all mappings
-    memset(&button_mappings[player_id], 0, sizeof(button_mappings[player_id]));
-
-    // ACTION_MOVE_UP: Up Arrow, Left Stick Up, or D-Pad Up
-    button_mappings[player_id][ACTION_MOVE_UP].keyboard_key = KEY_UP;
-    button_mappings[player_id][ACTION_MOVE_UP].gamepad_button = GP_FIELD_STICKS;
-    button_mappings[player_id][ACTION_MOVE_UP].gamepad_mask = GAMEPAD_LSTICK_UP;
-    button_mappings[player_id][ACTION_MOVE_UP].gamepad_button2 = GP_FIELD_DPAD;
-    button_mappings[player_id][ACTION_MOVE_UP].gamepad_mask2 = GAMEPAD_DPAD_UP;
-
-    // ACTION_MOVE_DOWN: Down Arrow, Left Stick Down, or D-Pad Down
-    button_mappings[player_id][ACTION_MOVE_DOWN].keyboard_key = KEY_DOWN;
-    button_mappings[player_id][ACTION_MOVE_DOWN].gamepad_button = GP_FIELD_STICKS;
-    button_mappings[player_id][ACTION_MOVE_DOWN].gamepad_mask = GAMEPAD_LSTICK_DOWN;
-    button_mappings[player_id][ACTION_MOVE_DOWN].gamepad_button2 = GP_FIELD_DPAD;
-    button_mappings[player_id][ACTION_MOVE_DOWN].gamepad_mask2 = GAMEPAD_DPAD_DOWN;
-
-    // ACTION_MOVE_LEFT: Left Arrow, Left Stick Left, or D-Pad Left
-    button_mappings[player_id][ACTION_MOVE_LEFT].keyboard_key = KEY_LEFT;
-    button_mappings[player_id][ACTION_MOVE_LEFT].gamepad_button = GP_FIELD_STICKS;
-    button_mappings[player_id][ACTION_MOVE_LEFT].gamepad_mask = GAMEPAD_LSTICK_LEFT;
-    button_mappings[player_id][ACTION_MOVE_LEFT].gamepad_button2 = GP_FIELD_DPAD;
-    button_mappings[player_id][ACTION_MOVE_LEFT].gamepad_mask2 = GAMEPAD_DPAD_LEFT;
-
-    // ACTION_MOVE_RIGHT: Right Arrow, Left Stick Right, or D-Pad Right
-    button_mappings[player_id][ACTION_MOVE_RIGHT].keyboard_key = KEY_RIGHT;
-    button_mappings[player_id][ACTION_MOVE_RIGHT].gamepad_button = GP_FIELD_STICKS;
-    button_mappings[player_id][ACTION_MOVE_RIGHT].gamepad_mask = GAMEPAD_LSTICK_RIGHT;
-    button_mappings[player_id][ACTION_MOVE_RIGHT].gamepad_button2 = GP_FIELD_DPAD;
-    button_mappings[player_id][ACTION_MOVE_RIGHT].gamepad_mask2 = GAMEPAD_DPAD_RIGHT;
-
-    // ACTION_BTN_A: Z key or A button
-    button_mappings[player_id][ACTION_BTN_A].keyboard_key = KEY_Z;
-    button_mappings[player_id][ACTION_BTN_A].gamepad_button = GP_FIELD_BTN0;
-    button_mappings[player_id][ACTION_BTN_A].gamepad_mask = GAMEPAD_BTN0_A;
-
-    // ACTION_BTN_B: X key or B button
-    button_mappings[player_id][ACTION_BTN_B].keyboard_key = KEY_X;
-    button_mappings[player_id][ACTION_BTN_B].gamepad_button = GP_FIELD_BTN0;
-    button_mappings[player_id][ACTION_BTN_B].gamepad_mask = GAMEPAD_BTN0_B;
-
-    // ACTION_BTN_X: C key or X button
-    button_mappings[player_id][ACTION_BTN_X].keyboard_key = KEY_C;
-    button_mappings[player_id][ACTION_BTN_X].gamepad_button = GP_FIELD_BTN0;
-    button_mappings[player_id][ACTION_BTN_X].gamepad_mask = GAMEPAD_BTN0_X;
-
-    // ACTION_BTN_Y: V key or Y button
-    button_mappings[player_id][ACTION_BTN_Y].keyboard_key = KEY_V;
-    button_mappings[player_id][ACTION_BTN_Y].gamepad_button = GP_FIELD_BTN0;
-    button_mappings[player_id][ACTION_BTN_Y].gamepad_mask = GAMEPAD_BTN0_Y;
-
-    // ACTION_BTN_LT: A key or L1/L2
-    button_mappings[player_id][ACTION_BTN_LT].keyboard_key = KEY_A;
-    button_mappings[player_id][ACTION_BTN_LT].gamepad_button = GP_FIELD_BTN0;
-    button_mappings[player_id][ACTION_BTN_LT].gamepad_mask = GAMEPAD_BTN0_L1;
-    button_mappings[player_id][ACTION_BTN_LT].gamepad_button2 = GP_FIELD_BTN1;
-    button_mappings[player_id][ACTION_BTN_LT].gamepad_mask2 = GAMEPAD_BTN1_L2;
-
-    // ACTION_BTN_RT: S key or R1/R2
-    button_mappings[player_id][ACTION_BTN_RT].keyboard_key = KEY_S;
-    button_mappings[player_id][ACTION_BTN_RT].gamepad_button = GP_FIELD_BTN0;
-    button_mappings[player_id][ACTION_BTN_RT].gamepad_mask = GAMEPAD_BTN0_R1;
-    button_mappings[player_id][ACTION_BTN_RT].gamepad_button2 = GP_FIELD_BTN1;
-    button_mappings[player_id][ACTION_BTN_RT].gamepad_mask2 = GAMEPAD_BTN1_R2;
-
-    // ACTION_BTN_SELECT: Backspace or Select
-    button_mappings[player_id][ACTION_BTN_SELECT].keyboard_key = KEY_BACKSPACE;
-    button_mappings[player_id][ACTION_BTN_SELECT].gamepad_button = GP_FIELD_BTN1;
-    button_mappings[player_id][ACTION_BTN_SELECT].gamepad_mask = GAMEPAD_BTN1_SELECT;
-
-    // ACTION_BTN_START: Enter or Start
-    button_mappings[player_id][ACTION_BTN_START].keyboard_key = KEY_ENTER;
-    button_mappings[player_id][ACTION_BTN_START].gamepad_button = GP_FIELD_BTN1;
-    button_mappings[player_id][ACTION_BTN_START].gamepad_mask = GAMEPAD_BTN1_START;
+    for (uint8_t i = 0; i < count; i++) {
+        fire_keys[codes[i] >> 3] &= (uint8_t)~(1 << (codes[i] & 7));
+    }
 }
 
 /**
@@ -151,13 +100,48 @@ void reset_button_mappings(uint8_t player_id)
  */
 void init_input_system(void)
 {
-    // Initialize with default button mappings
-    for (uint8_t player = 0; player < GAMEPAD_COUNT; player++) {
-        reset_button_mappings(player);
-    }
+    memset(fire_keys, 0xFF, sizeof(fire_keys));
+    fire_keys[0] &= (uint8_t)~KEYBOARD_STATE_BITS;
+    clear_fire_keys(up_keys, sizeof(up_keys));
+    clear_fire_keys(down_keys, sizeof(down_keys));
+    clear_fire_keys(left_keys, sizeof(left_keys));
+    clear_fire_keys(right_keys, sizeof(right_keys));
+    clear_fire_keys(pause_keys, sizeof(pause_keys));
 
-    // Override defaults with saved gamepad mappings if present.
-    (void)load_button_mappings(0);
+    memset(saved_bindings, 0, sizeof(saved_bindings));
+    // Add saved gamepad mappings if present.
+    load_button_mappings();
+
+    actions = 0;
+}
+
+static bool any_key_pressed(const uint8_t *codes, uint8_t count)
+{
+    for (uint8_t i = 0; i < count; i++) {
+        if (KEYBOARD_PRESSED(keyboard.keys, codes[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool binding_pressed(const uint8_t *pad, const GamepadBinding *binding)
+{
+    return (pad[binding->field] & binding->mask) != 0;
+}
+
+static bool control_pressed(const uint8_t *pad, GamepadControl control)
+{
+    return binding_pressed(pad, &default_bindings[control][0]) ||
+           binding_pressed(pad, &default_bindings[control][1]) ||
+           binding_pressed(pad, &saved_bindings[control]);
+}
+
+static void set_action(GameAction action, bool pressed)
+{
+    if (pressed) {
+        actions |= (uint8_t)(1 << action);
+    }
 }
 
 /**
@@ -165,74 +149,69 @@ void init_input_system(void)
  */
 void handle_input(void)
 {
+    actions = 0;
+
     // Read all keyboard state bytes
     RIA.addr0 = XRAM_KEYBOARD;
     RIA.step0 = 1;
     for (uint8_t i = 0; i < sizeof(keyboard.keys); i++) {
         keyboard.keys[i] = RIA.rw0;
     }
-    
-    // Read gamepad data
+
+    if (!KEYBOARD_PRESSED(keyboard.keys, KEYBOARD_NO_KEY)) {
+        bool any_key = (keyboard.keys[0] & (uint8_t)~KEYBOARD_STATE_BITS) != 0;
+        bool fire_key = false;
+        for (uint8_t i = 0; i < sizeof(keyboard.keys); i++) {
+            if (i != 0 && keyboard.keys[i] != 0) {
+                any_key = true;
+            }
+            if (keyboard.keys[i] & fire_keys[i]) {
+                fire_key = true;
+            }
+        }
+
+        set_action(ACTION_MOVE_UP, any_key_pressed(up_keys, sizeof(up_keys)));
+        set_action(ACTION_MOVE_DOWN, any_key_pressed(down_keys, sizeof(down_keys)));
+        set_action(ACTION_MOVE_LEFT, any_key_pressed(left_keys, sizeof(left_keys)));
+        set_action(ACTION_MOVE_RIGHT, any_key_pressed(right_keys, sizeof(right_keys)));
+        set_action(ACTION_FIRE, fire_key);
+        set_action(ACTION_PAUSE, any_key_pressed(pause_keys, sizeof(pause_keys)));
+        set_action(ACTION_START, any_key);
+    }
+
+    // Read the first gamepad's digital state: dpad, sticks, btn0, btn1,
+    // indexed by GP_FIELD_*.
+    uint8_t pad[4];
     RIA.addr0 = XRAM_GAMEPAD;
     RIA.step0 = 1;
-    for (uint8_t i = 0; i < GAMEPAD_COUNT; i++) {
-        gamepad.player[i].dpad = RIA.rw0;
-        gamepad.player[i].sticks = RIA.rw0;
-        gamepad.player[i].btn0 = RIA.rw0;
-        gamepad.player[i].btn1 = RIA.rw0;
-        gamepad.player[i].lx = RIA.rw0;
-        gamepad.player[i].ly = RIA.rw0;
-        gamepad.player[i].rx = RIA.rw0;
-        gamepad.player[i].ry = RIA.rw0;
-        gamepad.player[i].l2 = RIA.rw0;
-        gamepad.player[i].r2 = RIA.rw0;
+    for (uint8_t i = 0; i < sizeof(pad); i++) {
+        pad[i] = RIA.rw0;
+    }
+
+    if (pad[GP_FIELD_DPAD] & GAMEPAD_FEAT_CONNECTED) {
+        pad[GP_FIELD_DPAD] &= GP_DPAD_MASK;
+
+        bool fire = control_pressed(pad, GP_CONTROL_A) || control_pressed(pad, GP_CONTROL_B) ||
+                    control_pressed(pad, GP_CONTROL_X) || control_pressed(pad, GP_CONTROL_Y);
+        bool pause = control_pressed(pad, GP_CONTROL_SELECT) || control_pressed(pad, GP_CONTROL_START);
+
+        set_action(ACTION_MOVE_UP, control_pressed(pad, GP_CONTROL_UP));
+        set_action(ACTION_MOVE_DOWN, control_pressed(pad, GP_CONTROL_DOWN));
+        set_action(ACTION_MOVE_LEFT, control_pressed(pad, GP_CONTROL_LEFT));
+        set_action(ACTION_MOVE_RIGHT, control_pressed(pad, GP_CONTROL_RIGHT));
+        set_action(ACTION_FIRE, fire);
+        set_action(ACTION_PAUSE, pause);
+        set_action(ACTION_START, fire || pause);
     }
 }
 
 /**
- * Check if a game action is active for a specific player
+ * Check if a game action is active this frame
  */
-bool is_action_pressed(uint8_t player_id, GameAction action)
+bool is_action_pressed(GameAction action)
 {
-    if (player_id >= GAMEPAD_COUNT || action >= ACTION_COUNT) {
+    if (action >= ACTION_COUNT) {
         return false;
     }
-    
-    ButtonMapping* mapping = &button_mappings[player_id][action];
-    
-    // Check keyboard (player 0 only for now)
-    if (player_id == 0) {
-        if (KEYBOARD_PRESSED(keyboard.keys, mapping->keyboard_key)) {
-            return true;
-        }
-    }
-    
-    // Only check gamepad if one is connected
-    if (!(gamepad.player[player_id].dpad & GAMEPAD_FEAT_CONNECTED)) {
-        return false;
-    }
-    
-    // Check primary gamepad mapping
-    uint8_t gamepad_value = 0;
-    switch (mapping->gamepad_button) {
-        case 0: gamepad_value = gamepad.player[player_id].dpad; break;
-        case 1: gamepad_value = gamepad.player[player_id].sticks; break;
-        case 2: gamepad_value = gamepad.player[player_id].btn0; break;
-        case 3: gamepad_value = gamepad.player[player_id].btn1; break;
-    }
-    if (gamepad_value & mapping->gamepad_mask) return true;
-
-    // Check secondary gamepad mapping (e.g. D-pad alongside analog stick)
-    if (mapping->gamepad_mask2 != 0) {
-        uint8_t gamepad_value2 = 0;
-        switch (mapping->gamepad_button2) {
-            case 0: gamepad_value2 = gamepad.player[player_id].dpad; break;
-            case 1: gamepad_value2 = gamepad.player[player_id].sticks; break;
-            case 2: gamepad_value2 = gamepad.player[player_id].btn0; break;
-            case 3: gamepad_value2 = gamepad.player[player_id].btn1; break;
-        }
-        return (gamepad_value2 & mapping->gamepad_mask2) != 0;
-    }
-
-    return false;
+    return (actions & (uint8_t)(1 << action)) != 0;
 }

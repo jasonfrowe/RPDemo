@@ -4,15 +4,18 @@
 
 ## Star Hopper — How to Play
 
-Star Hopper is a vertical shoot-em-up for the Picocomputer (RP6502). Fight through 7 levels of enemy waves, defeat a boss at the end of each level, and survive to reach the YOU WIN screen.
+Star Hopper is a vertical shoot-em-up for the Picocomputer (RP6502). Fight through 7 levels of enemy waves, defeat a boss at the end of each level, and survive to reach the YOU WIN screen. Your ship stays parked there for the fireworks and the boss parade; any key or button returns to the title.
 
 ### Controls
 
-| Action | Gamepad |
-|---|---|
-| Move | D-Pad or Left Stick |
-| Fire | X |
-| Pause | Start |
+| Action | Keyboard | Gamepad |
+|---|---|---|
+| Move | W A S D, arrow keys, or keypad (7 9 1 3 move diagonally) | D-Pad or Left Stick |
+| Fire (hold for auto-fire) | Any other key | A, B, X or Y |
+| Pause / unpause | P or Pause | Start or Select |
+| Start / continue | Any key | A, B, X, Y, Start or Select |
+
+Holding fire on the bonus screen fast-forwards the tally.
 
 ### Enemies and Scoring
 
@@ -24,7 +27,7 @@ After clearing a level, a **bonus screen** tallies your kills per enemy type and
 
 Each level ends with a boss encounter.  Bosses have a vulerable that is bright yellow.  Shoot it to deal damage.  Some bosses will only be vunerable after certain conditions are met, which will be telegraphed visually.  For example, Boss Variant Four (Level 4) requires you to destroy all but one of the smaller enemies on screen before its vulnerable point will appear.
 
-You have **4 minutes** to defeat the boss. If time runs out, the boss retreats and the level is marked **LEVEL FAILED**. Press Start to retry the same level.
+You have **4 minutes** to defeat the boss. If time runs out, the boss retreats and the level is marked **LEVEL FAILED**. Press any button to retry the same level.
 
 ### Asteroids and Power-Ups
 
@@ -34,7 +37,7 @@ Destroying asteroids can reveal power-up capsules. Pickups follow a fixed repeat
 |---|---|---|
 | **P** | Power | Increases fire rate (faster shots, down to a minimum cooldown) |
 | **E** | Energy | Restores 8 HP |
-| **S** | Speed | Raises your maximum movement speed |
+| **S** | Speed | Raises your movement speed |
 
 
 ### Health
@@ -263,8 +266,7 @@ Before we start graphics setup, here is what is already provided in `images/` an
 | `StarFields_tiles_4bpp.bin` | 8096 bytes | Shared tile pixel data for BG/FG/HUD; 8x8 tiles at 4bpp (currently 253 tiles present, 256 max supported). |
 | `StarFields_BG_map.bin` | 2400 bytes | Background tilemap index grid (40x60, 1 byte per tile). |
 | `StarFields_FG_map.bin` | 2400 bytes | Foreground tilemap index grid (40x60, 1 byte per tile). |
-| `StarFields_HUD_map.bin` | 1200 bytes | HUD tilemap index grid (40x30, 1 byte per tile). |
-| `StarFields_HUD_map1.bin` | 1200 bytes | ROM-named HUD map variant used for restoring HUD tiles from ROM when needed. |
+| `StarFields_HUD_map.bin` | 1200 bytes | HUD tilemap index grid (40x30, 1 byte per tile). Also packaged as the named ROM asset `StarFields_HUD_map.bin`, which the game reads back to restore the title HUD. |
 
 ### Palette helper files
 
@@ -887,28 +889,58 @@ This sets the XRAM addresses for the keyboard and gamepad inputs and enables the
     init_input_system();
     player_controller_init();
 ```
-This initializes our input handling system and our player controller.  The input system will also look for `JOYSTICK_SH.DAT` and if it exists, it will load custom key mappings from that file.  This allows you to set up custom key mappings for any gamepad you want to use with your Picocomputer.
+This initializes our input handling system and our player controller.  The input system will also look for `JOYSTICK_SH.DAT` and if it exists, it will load extra gamepad mappings from that file (see [Mapping any gamepad with `GamepadMapper`](#mapping-any-gamepad-with-gamepadmapper) below).
+
+### Game actions
+
+The game never asks "is the X button down?". It asks about actions:
+
+```c
+typedef enum {
+    ACTION_MOVE_UP,
+    ACTION_MOVE_DOWN,
+    ACTION_MOVE_LEFT,
+    ACTION_MOVE_RIGHT,
+    ACTION_FIRE,
+    ACTION_PAUSE,
+    ACTION_START,
+    ACTION_COUNT  // Total number of actions
+} GameAction;
+```
+
+`handle_input()` reads the keyboard and gamepad state from XRAM once per frame and turns it into one bit per action, and `is_action_pressed(ACTION_FIRE)` just tests a bit.  The keyboard and the gamepad feed the same actions, so the rest of the game doesn't care which one you're using:
+
+| Action | Keyboard | Gamepad |
+|---|---|---|
+| `ACTION_MOVE_*` | W A S D, arrow keys, or keypad 8/4/6/2 (7/9/1/3 set two directions) | D-Pad or left stick |
+| `ACTION_FIRE` | every key except the move keys, P and Pause | A, B, X or Y |
+| `ACTION_PAUSE` | P or Pause | Start or Select |
+| `ACTION_START` | any key | A, B, X, Y, Start or Select |
+
+The keyboard block is a bit array of USB HID keycodes, one bit per key, so "any other key fires" is a mask: `init_input_system()` starts from all 256 bits and clears the move and pause keys, and `handle_input()` ANDs the keyboard state with it.  Two details of the keyboard block matter here.  Keycodes 0 to 3 aren't keys: bit 0 (`KEYBOARD_NO_KEY`) is set while *no* key is pressed, and bits 1 to 3 are the Num, Caps and Scroll Lock lamps, which stay set while the lamp is on.  They are cleared from both the fire mask and the "any key" test, or Caps Lock would fire forever.  Keypad keys report the same keycodes whether Num Lock is on or off, so the keypad always moves the ship.
+
+On a gamepad, the top four bits of the dpad byte are the pad's type and status (`GAMEPAD_FEAT_CONNECTED`, `GAMEPAD_FEAT_STICKS` and the button labelling), so the input system only reads a pad whose connected bit is set, and masks the dpad byte down to its four direction bits before testing them.
 
 ### Mapping any gamepad with `GamepadMapper`
 
-This repo includes a small utility program (`src/gamepad_mapper.c`) that lets you map controls for any gamepad and save the result to `JOYSTICK_SH.DAT`.
+This repo includes a small utility program (`src/gamepad_mapper.c`) that lets you map controls for an unusual gamepad and save the result to `JOYSTICK_SH.DAT`.  Most gamepads don't need it: the RIA already reports Western (AB), Eastern (BA) and PlayStation pads with their face buttons in the same places, and all four face buttons fire.
 
 What it does:
-- Prompts you for each in-game action (`MOVE UP`, `MOVE DOWN`, `MOVE LEFT`, `MOVE RIGHT`, `BUTTON A/B/X/Y`, `BUTTON LT/RT`, `SELECT`, `START`).
+- Prompts you for each control (`MOVE UP`, `MOVE DOWN`, `MOVE LEFT`, `MOVE RIGHT`, `BUTTON A/B/X/Y`, `SELECT`, `START`).
 - Records the actual gamepad field/mask values for the button you press.
 - Writes the mapping file `JOYSTICK_SH.DAT` to storage.
 
-At game startup, `init_input_system()` in `input.c` automatically loads `JOYSTICK_SH.DAT` (if present), so your custom mapping is applied without any code changes.
+At game startup, `init_input_system()` in `input.c` automatically loads `JOYSTICK_SH.DAT` (if present).  A saved mapping is *added* to the standard ones rather than replacing them, so the D-Pad, the left stick and the usual buttons always keep working, and a pad that reports a button somewhere unusual gains it too.  Files written by older versions of the mapper, which also asked for LT and RT, still load; those two entries are ignored.
 
 Recommended workflow:
 
-1. Build the `GamepadMapper` target.
-2. Run/upload `GamepadMapper` on the Picocomputer.
+1. Choose `GamepadMapper` as the launch target in the CMake side panel.
+2. Press F5 with "RP6502 (Hardware)" to run it on the Picocomputer (or use the "RP6502: upload ROM" task and run it from the monitor).
 3. Follow the on-screen prompts and press the requested control for each action.
 4. Confirm `JOYSTICK_SH.DAT` was saved.
 5. Run the main game; it will pick up that mapping automatically.
 
-If `JOYSTICK_SH.DAT` is missing or invalid, the game falls back to the default mappings in `reset_button_mappings()`.
+If `JOYSTICK_SH.DAT` is missing or invalid, the game uses the standard mappings in `input.c`.
 
 In our VSYNC loop we have added:
 
@@ -958,7 +990,7 @@ The key here is,
 ```
 We are directly updating the XRAM values for the sprite's position.  This is a powerful feature of the Picocomputer, as it allows us to update sprite properties directly from our game logic without needing to make expensive system calls.  By writing directly to XRAM, we can achieve very fast updates to our sprites, which is essential for smooth gameplay.
 
-At this point, you should be able to move your player sprite around the screen using the D-pad or controller sticks.  You can customize the input handling logic in ```player_controller_update()``` or replace it with your own control scheme. 
+At this point, you should be able to move your player sprite around the screen using W A S D, the arrow keys, the keypad, the D-Pad or the left stick.  You can customize the input handling logic in ```player_controller_update()``` or replace it with your own control scheme. 
 
 ## Tilemaps and Backgrounds
 
@@ -1362,23 +1394,10 @@ In this example, we will change palettes to show when the player is moving up, d
 ```c
 void player_controller_update(void)
 {
-    // Tap LT to decrease speed by 1, tap RT to increase speed by 1.
-    bool speed_down_now = is_action_pressed(0, ACTION_BTN_LT);
-    bool speed_up_now = is_action_pressed(0, ACTION_BTN_RT);
-
-    if (speed_down_now && !prev_speed_down) {
-        player_controller_set_speed(player_speed - 1);
-    }
-    if (speed_up_now && !prev_speed_up) {
-        player_controller_set_speed(player_speed + 1);
-    }
-    prev_speed_down = speed_down_now;
-    prev_speed_up = speed_up_now;
-
-    bool moving_up = is_action_pressed(0, ACTION_MOVE_UP);
-    bool moving_down = is_action_pressed(0, ACTION_MOVE_DOWN);
-    bool moving_left = is_action_pressed(0, ACTION_MOVE_LEFT);
-    bool moving_right = is_action_pressed(0, ACTION_MOVE_RIGHT);
+    bool moving_up = is_action_pressed(ACTION_MOVE_UP);
+    bool moving_down = is_action_pressed(ACTION_MOVE_DOWN);
+    bool moving_left = is_action_pressed(ACTION_MOVE_LEFT);
+    bool moving_right = is_action_pressed(ACTION_MOVE_RIGHT);
 
     int32_t speed_q8 = SPEED_TO_Q8(player_speed);
 
@@ -1648,7 +1667,7 @@ Pickup behavior and effects:
 - Pickup sprites zig-zag horizontally while descending at `0.25 px/frame`.
 - Pickup collection uses a centered `6x6` hitbox inside the `8x8` sprite.
 - Energy pickup: restores `8` HP (capped by `PLAYER_MAX_HEALTH`).
-- Speed pickup: increases the player's unlocked speed cap by `+1`, restores current speed to that cap, and is capped at `PLAYER_SPEED_MAX` (`10`, or `2.5 px/frame`). LT can reduce current speed temporarily; RT can only restore up to the unlocked cap.
+- Speed pickup: increases the player's speed by `+1` (`0.25 px/frame`), capped at `PLAYER_SPEED_MAX` (`9`, or `2.25 px/frame`). Losing a life takes two steps back off, but never below the starting speed.
 - Power pickup: increases fire rate by `+1` unit (implemented as reducing shot cooldown by 1 frame), capped by `PLAYER_FIRE_RATE_MIN`.
 
 Here is the code to initialize the projectile sprites in ```sprite_mode5.c```.  Note that we changed the options in the xreg_vga_mode5 call to `MODE5_4BPP | MODE5_8X8`, 8x8 sprites with a 4-bit color index, which is appropriate for our projectile sprites.  We also set up a pool of projectile sprites in XRAM, initializing their positions off-screen and pointing them to the correct sprite data and palette.  This allows us to activate and deactivate these projectile sprites as needed during gameplay to create shooting mechanics.
@@ -1776,8 +1795,9 @@ The example below shows how we can implement a simple game loop with a title scr
         handle_input();
 
         {
-            game_transition_t transition = game_state_handle_start_button(
-                is_action_pressed(0, ACTION_BTN_START)
+            game_transition_t transition = game_state_handle_buttons(
+                is_action_pressed(ACTION_START),
+                is_action_pressed(ACTION_PAUSE)
             );
 
             if (transition == GAME_TRANSITION_START_GAME) {
@@ -1800,7 +1820,6 @@ The example below shows how we can implement a simple game loop with a title scr
         }
     }
   ```
-
 
 ![Leaving Warp to start the game](Screenshots/Screenshot_003.png)
 
@@ -2332,7 +2351,7 @@ At the end of the 7th subwave:
 2. Scroll transitions to fast warp style (without restoring HUD from ROM).
 3. Music switches to `music/Bonus.vgm`.
 4. Bonus tally is rendered.
-5. Press and release START to begin the next level.
+5. Press any button to begin the next level.
 
 #### Level Compositions
 
@@ -2376,7 +2395,7 @@ Health restoration:
 - 1 HP restored per enemy kill from the previous level (clamped to max).
 
 Bonus completion prompt:
-- After bonus tally and health refill complete, HUD shows `PRESS START` near the bottom.
+- After bonus tally and health refill complete, HUD shows `PRESS BUTTON` near the bottom.
 
 #### Music Flow
 
@@ -2407,14 +2426,14 @@ On game-over entry:
 Game-over visuals:
 - Enemy frames `42..49` are reused to spell `GAME OVER`
 - Letters fly in from different off-screen origins and converge more slowly
-- Final word placement is shifted downward to avoid overlapping `PRESS START`
+- Final word placement is shifted downward to avoid overlapping `PRESS BUTTON`
 - Only a brief delay is applied before the letter fly-in begins
 
 Foreground tile behavior on game-over transition:
 - Warp/foreground tiles are restored when transitioning back to fast title-style scrolling
 
 Exit rules from game-over:
-- Start press + release, or
+- Any button, or
 - 60-second timeout
 
 Both paths return to title and reset player, enemies, projectiles, score, HUD health, and title music.
@@ -2549,7 +2568,7 @@ On game-over entry:
 
 #### Exit Rules
 
-- **START pressed and released:** Returns to title cleanly (game state reset before transition).
+- **Any button:** Returns to title cleanly (game state reset before transition).
 - **Timeout (108.8s):** Auto-returns to title.
 
 Both paths fully reset player, enemies, projectiles, score, HUD health, and restore title music.

@@ -20,7 +20,7 @@ rp6502_asset(RPStarHopper XRAM(XRAM_SFX_DATA) music/sfx/sfx_xram.bin)
 rp6502_asset(RPStarHopper help src/help.txt)
 
 # ROM Assets
-rp6502_asset(RPStarHopper StarFields_HUD_map.bin images/StarFields_HUD_map1.bin)
+rp6502_asset(RPStarHopper StarFields_HUD_map.bin images/StarFields_HUD_map.bin)
 rp6502_asset(RPStarHopper Title.vgm music/Title.vgm)
 rp6502_asset(RPStarHopper Level_01.vgm music/Level_01.vgm)
 rp6502_asset(RPStarHopper Level_02.vgm music/Level_02.vgm)

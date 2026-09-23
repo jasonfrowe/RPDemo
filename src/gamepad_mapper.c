@@ -20,28 +20,26 @@ static const char* prompt_labels[] = {
     "BUTTON B",
     "BUTTON X",
     "BUTTON Y",
-    "BUTTON LT",
-    "BUTTON RT",
     "SELECT",
     "START",
     NULL
 };
 
-static uint8_t action_map[] = {
-    ACTION_MOVE_UP,
-    ACTION_MOVE_DOWN,
-    ACTION_MOVE_LEFT,
-    ACTION_MOVE_RIGHT,
-    ACTION_BTN_A,
-    ACTION_BTN_B,
-    ACTION_BTN_X,
-    ACTION_BTN_Y,
-    ACTION_BTN_LT,
-    ACTION_BTN_RT,
-    ACTION_BTN_SELECT,
-    ACTION_BTN_START,
-    ACTION_COUNT
+static const uint8_t action_map[] = {
+    GP_CONTROL_UP,
+    GP_CONTROL_DOWN,
+    GP_CONTROL_LEFT,
+    GP_CONTROL_RIGHT,
+    GP_CONTROL_A,
+    GP_CONTROL_B,
+    GP_CONTROL_X,
+    GP_CONTROL_Y,
+    GP_CONTROL_SELECT,
+    GP_CONTROL_START,
 };
+
+_Static_assert(sizeof(action_map) == sizeof(prompt_labels) / sizeof(prompt_labels[0]) - 1,
+               "one GP_CONTROL_* per prompt");
 
 typedef struct {
     uint8_t action_id;
@@ -49,10 +47,7 @@ typedef struct {
     uint8_t mask;
 } JoystickMapping;
 
-// The direction bits of the dpad byte, without its type, sticks and connected bits.
-#define DPAD_MASK (GAMEPAD_DPAD_UP | GAMEPAD_DPAD_DOWN | GAMEPAD_DPAD_LEFT | GAMEPAD_DPAD_RIGHT)
-
-static JoystickMapping mappings[ACTION_COUNT];
+static JoystickMapping mappings[GP_CONTROL_COUNT];
 static uint8_t num_mappings = 0;
 
 static void wait_for_all_released(void)
@@ -64,7 +59,7 @@ static void wait_for_all_released(void)
 
         RIA.addr0 = XRAM_GAMEPAD;
         RIA.step0 = 1;
-        uint8_t d  = RIA.rw0 & DPAD_MASK;
+        uint8_t d  = RIA.rw0 & GP_DPAD_MASK;
         uint8_t s  = RIA.rw0;
         uint8_t b0 = RIA.rw0;
         uint8_t b1 = RIA.rw0;
@@ -83,7 +78,7 @@ static bool wait_for_any_button(uint8_t* field, uint8_t* mask)
 
         RIA.addr0 = XRAM_GAMEPAD;
         RIA.step0 = 1;
-        uint8_t d = RIA.rw0 & DPAD_MASK;
+        uint8_t d = RIA.rw0 & GP_DPAD_MASK;
         uint8_t s = RIA.rw0;
         uint8_t b0 = RIA.rw0;
         uint8_t b1 = RIA.rw0;
@@ -142,7 +137,7 @@ int main(void)
         while (true) {
             RIA.addr0 = XRAM_GAMEPAD;
             RIA.step0 = 1;
-            uint8_t d = RIA.rw0 & DPAD_MASK;
+            uint8_t d = RIA.rw0 & GP_DPAD_MASK;
             uint8_t s = RIA.rw0;
             uint8_t b0 = RIA.rw0;
             uint8_t b1 = RIA.rw0;

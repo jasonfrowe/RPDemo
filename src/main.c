@@ -60,7 +60,7 @@ int main(void)
         // 2. INPUT
         handle_input();
 
-        gameplay_frame(is_action_pressed(0, ACTION_BTN_START)); 
+        gameplay_frame(is_action_pressed(ACTION_START), is_action_pressed(ACTION_PAUSE));
     }
 
     return 0;

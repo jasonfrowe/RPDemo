@@ -9,10 +9,9 @@
 #include "sfx.h"
 #include "sprite_mode5.h"
 
-// Speed level 1..10 maps to 0.25..2.5 pixels per frame (each step = 0.25 px/frame).
-// To tune: change PLAYER_DEFAULT_SPEED. Range is PLAYER_SPEED_MIN to PLAYER_SPEED_MAX.
+// Each speed level is 0.25 pixels per frame. Speed pickups raise the level
+// from PLAYER_DEFAULT_SPEED up to PLAYER_SPEED_MAX.
 #define PLAYER_DEFAULT_SPEED  5     // 1.25 px/frame
-#define PLAYER_SPEED_MIN      1     // 0.25 px/frame
 #define PLAYER_SPEED_MAX      9     // 2.25 px/frame
 #define PLAYER_RESPAWN_INVINCIBLE_FRAMES (3 * 60)
 #define PLAYER_RESPAWN_RISE_SPEED_PX 2
@@ -54,9 +53,6 @@ static uint16_t respawn_invincible_timer = 0;
 static uint8_t respawn_blink_tick = 0;
 static bool respawn_visible = true;
 
-static int player_speed_cap = PLAYER_DEFAULT_SPEED;
-static bool prev_speed_down = false;
-static bool prev_speed_up = false;
 static uint8_t fire_cooldown = 0;
 static uint8_t player_fire_rate = PLAYER_FIRE_RATE;
 static uint8_t damage_flash_phase = 0;
@@ -69,16 +65,12 @@ static int16_t player_start_y(void)
 
 static void player_controller_apply_death_penalty(void)
 {
-    if (player_speed_cap > PLAYER_DEFAULT_SPEED) {
-        if (player_speed_cap >= (PLAYER_DEFAULT_SPEED + 2)) {
-            player_speed_cap -= 2;
+    if (player_speed > PLAYER_DEFAULT_SPEED) {
+        if (player_speed >= (PLAYER_DEFAULT_SPEED + 2)) {
+            player_speed -= 2;
         } else {
-            player_speed_cap = PLAYER_DEFAULT_SPEED;
+            player_speed = PLAYER_DEFAULT_SPEED;
         }
-    }
-
-    if (player_speed > player_speed_cap) {
-        player_speed = player_speed_cap;
     }
 
     if (player_fire_rate < PLAYER_FIRE_RATE) {
@@ -93,7 +85,6 @@ static void player_controller_apply_death_penalty(void)
 void player_controller_reset_for_new_run(void)
 {
     player_speed = PLAYER_DEFAULT_SPEED;
-    player_speed_cap = PLAYER_DEFAULT_SPEED;
     player_x_q8 = (int16_t)(((SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX) / 2) << Q8_SHIFT);
     player_y_q8 = (int16_t)(((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) * 2 / 3) << Q8_SHIFT);
     player_health = PLAYER_MAX_HEALTH;
@@ -111,19 +102,10 @@ void player_controller_reset_for_new_run(void)
     fire_cooldown = 0;
     player_fire_rate = PLAYER_FIRE_RATE;
     damage_flash_phase = 0;
-    prev_speed_down = false;
-    prev_speed_up = false;
     sprite_mode5_set_damage_flash(false);
     sprite_mode5_show_player();
     sprite_mode5_set_frame(0);
     sprite_mode5_set_position((int16_t)(player_x_q8 >> Q8_SHIFT), (int16_t)(player_y_q8 >> Q8_SHIFT));
-}
-
-void player_controller_set_speed(int level)
-{
-    if (level < PLAYER_SPEED_MIN) level = PLAYER_SPEED_MIN;
-    if (level > player_speed_cap) level = player_speed_cap;
-    player_speed = level;
 }
 
 int player_controller_get_speed(void)
@@ -133,11 +115,9 @@ int player_controller_get_speed(void)
 
 void player_controller_apply_speed_pickup(void)
 {
-    if (player_speed_cap < PLAYER_SPEED_MAX) {
-        player_speed_cap++;
+    if (player_speed < PLAYER_SPEED_MAX) {
+        player_speed++;
     }
-
-    player_speed = player_speed_cap;
 }
 
 void player_controller_apply_power_pickup(void)
@@ -154,10 +134,10 @@ uint8_t player_controller_get_fire_rate(void)
 
 uint8_t player_controller_get_speed_pickup_count(void)
 {
-    if (player_speed_cap <= PLAYER_DEFAULT_SPEED) {
+    if (player_speed <= PLAYER_DEFAULT_SPEED) {
         return 0;
     }
-    return (uint8_t)(player_speed_cap - PLAYER_DEFAULT_SPEED);
+    return (uint8_t)(player_speed - PLAYER_DEFAULT_SPEED);
 }
 
 uint8_t player_controller_get_power_pickup_count(void)
@@ -225,8 +205,6 @@ void player_controller_begin_respawn(void)
     damage_flash_timer = 0;
     damage_flash_phase = 0;
     fire_cooldown = 0;
-    prev_speed_down = false;
-    prev_speed_up = false;
 
     player_x_q8 = (int16_t)(start_x << Q8_SHIFT);
     player_y_q8 = (int16_t)(bottom_y << Q8_SHIFT);
@@ -452,27 +430,14 @@ void player_controller_update(void)
         return;
     }
 
-    // Tap LT to decrease speed by 1, tap RT to restore speed up to the unlocked cap.
-    bool speed_down_now = is_action_pressed(0, ACTION_BTN_LT);
-    bool speed_up_now = is_action_pressed(0, ACTION_BTN_RT);
+    bool moving_up = is_action_pressed(ACTION_MOVE_UP);
+    bool moving_down = is_action_pressed(ACTION_MOVE_DOWN);
+    bool moving_left = is_action_pressed(ACTION_MOVE_LEFT);
+    bool moving_right = is_action_pressed(ACTION_MOVE_RIGHT);
 
-    if (speed_down_now && !prev_speed_down) {
-        player_controller_set_speed(player_speed - 1);
-    }
-    if (speed_up_now && !prev_speed_up) {
-        player_controller_set_speed(player_speed + 1);
-    }
-    prev_speed_down = speed_down_now;
-    prev_speed_up = speed_up_now;
-
-    bool moving_up = is_action_pressed(0, ACTION_MOVE_UP);
-    bool moving_down = is_action_pressed(0, ACTION_MOVE_DOWN);
-    bool moving_left = is_action_pressed(0, ACTION_MOVE_LEFT);
-    bool moving_right = is_action_pressed(0, ACTION_MOVE_RIGHT);
-
-    // Fire projectile on X — held down, rate-limited
+    // Fire projectile while fire is held, rate-limited
     if (fire_cooldown > 0) fire_cooldown--;
-    if (is_action_pressed(0, ACTION_BTN_X) && fire_cooldown == 0) {
+    if (is_action_pressed(ACTION_FIRE) && fire_cooldown == 0) {
         int16_t px = (int16_t)(player_x_q8 >> Q8_SHIFT);
         int16_t py = (int16_t)(player_y_q8 >> Q8_SHIFT);
         // Spawn at horizontal center of player, top edge

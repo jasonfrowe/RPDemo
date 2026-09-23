@@ -76,8 +76,11 @@ void tile_mode2_set_level_banner(uint8_t level, bool visible);
 void tile_mode2_set_end_banner(bool victory);
 void tile_mode2_set_level_complete_banner(bool visible);
 void tile_mode2_set_level_failed_banner(bool visible);
-void tile_mode2_set_bonus_continue_prompt(bool visible);
-void tile_mode2_set_push_start_prompt(bool visible);
+// "PRESS BUTTON", on the title/game over row or the bonus/level failed row.
+#define PRESS_BUTTON_TITLE_Y 15
+#define PRESS_BUTTON_BONUS_Y 25
+void tile_mode2_show_press_button_prompt(uint8_t y);
+void tile_mode2_hide_press_button_prompt(void);
 void tile_mode2_set_health(uint8_t health);
 void tile_mode2_set_lives(uint8_t extra_lives);
 void tile_mode2_flash_life_change(uint8_t old_lives, uint8_t new_lives);

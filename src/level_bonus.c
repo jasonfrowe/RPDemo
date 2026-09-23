@@ -4,6 +4,7 @@
 
 #include "constants.h"
 #include "enemy.h"
+#include "game_state.h"
 #include "input.h"
 #include "music.h"
 #include "player_controller.h"
@@ -75,7 +76,7 @@ void level_bonus_reset(void)
     bonus_pending_total = 0;
     bonus_boss_points = 0;
     level_bonus_complete = false;
-    tile_mode2_set_bonus_continue_prompt(false);
+    tile_mode2_hide_press_button_prompt();
 }
 
 void level_bonus_begin(uint8_t current_level, bool boss_defeated)
@@ -131,7 +132,7 @@ void level_bonus_begin(uint8_t current_level, bool boss_defeated)
     tile_mode2_set_level_complete_banner(false);
     tile_mode2_begin_level_bonus(current_level, bonus_multiplier);
     tile_mode2_set_bonus_pending_total(0);
-    tile_mode2_set_bonus_continue_prompt(false);
+    tile_mode2_hide_press_button_prompt();
 
     enemy_start_bonus_icon_fly_in(0);
     bonus_phase = BONUS_PHASE_ICON_FLY_IN;
@@ -141,7 +142,7 @@ static void level_bonus_advance(uint8_t *hud_health_last);
 
 void level_bonus_update(uint8_t *hud_health_last)
 {
-    uint8_t steps = is_action_pressed(0, ACTION_BTN_X) ? BONUS_FAST_FORWARD_STEPS : 1;
+    uint8_t steps = is_action_pressed(ACTION_FIRE) ? BONUS_FAST_FORWARD_STEPS : 1;
 
     for (uint8_t step = 0; step < steps; step++) {
         if (bonus_phase == BONUS_PHASE_DONE) {
@@ -270,7 +271,8 @@ static void level_bonus_advance(uint8_t *hud_health_last)
             } else {
                 bonus_phase = BONUS_PHASE_DONE;
                 level_bonus_complete = true;
-                tile_mode2_set_bonus_continue_prompt(true);
+                // The prompt appears once the guard runs out; see gameplay_frame().
+                game_state_guard_start();
             }
             break;
 

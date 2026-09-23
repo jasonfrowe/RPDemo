@@ -5,52 +5,70 @@
 #include <stdbool.h>
 #include "xram.h"
 
-#define GAMEPAD_COUNT 1       // Support 1 gamepad for now
-
 // ============================================================================
-// BUTTON MAPPING SYSTEM
+// GAME ACTIONS
 // ============================================================================
+//
+// Keyboard:
+//   Move   W A S D, arrow keys, or keypad 8/4/6/2 (7/9/1/3 move diagonally)
+//   Fire   any other key except P and Pause
+//   Pause  P or Pause
+//   Start  any key ("PRESS BUTTON")
+//
+// Gamepad:
+//   Move   D-Pad or left stick
+//   Fire   A, B, X or Y
+//   Pause  Start or Select
+//   Start  A, B, X, Y, Start or Select ("PRESS BUTTON")
 
-// Game actions - movement and buttons
 typedef enum {
-    // Movement
     ACTION_MOVE_UP,
     ACTION_MOVE_DOWN,
     ACTION_MOVE_LEFT,
     ACTION_MOVE_RIGHT,
-    // Face buttons
-    ACTION_BTN_A,
-    ACTION_BTN_B,
-    ACTION_BTN_X,
-    ACTION_BTN_Y,
-    // Triggers
-    ACTION_BTN_LT,
-    ACTION_BTN_RT,
-    // System
-    ACTION_BTN_SELECT,
-    ACTION_BTN_START,
+    ACTION_FIRE,
+    ACTION_PAUSE,
+    ACTION_START,
     ACTION_COUNT  // Total number of actions
 } GameAction;
 
-// Button mapping structure
-typedef struct {
-    uint8_t keyboard_key;     // USB HID keycode
-    uint8_t gamepad_button;   // Which gamepad field (0=dpad, 1=sticks, 2=btn0, 3=btn1)
-    uint8_t gamepad_mask;     // Bit mask for the button
-    uint8_t gamepad_button2;  // Secondary gamepad field (same encoding)
-    uint8_t gamepad_mask2;    // Secondary bit mask (0 = no secondary mapping)
-} ButtonMapping;
+// ============================================================================
+// GAMEPAD MAPPING (JOYSTICK_SH.DAT, written by GamepadMapper)
+// ============================================================================
 
-// Gamepad Field Offsets
+// Gamepad controls a saved mapping can bind. The values are stored in
+// JOYSTICK_SH.DAT, so they never change. LT and RT are no longer used,
+// but keep their ids so files written by older mappers still load.
+typedef enum {
+    GP_CONTROL_UP,
+    GP_CONTROL_DOWN,
+    GP_CONTROL_LEFT,
+    GP_CONTROL_RIGHT,
+    GP_CONTROL_A,
+    GP_CONTROL_B,
+    GP_CONTROL_X,
+    GP_CONTROL_Y,
+    GP_CONTROL_LT,
+    GP_CONTROL_RT,
+    GP_CONTROL_SELECT,
+    GP_CONTROL_START,
+    GP_CONTROL_COUNT
+} GamepadControl;
+
+_Static_assert(GP_CONTROL_Y == 7 && GP_CONTROL_SELECT == 10 && GP_CONTROL_START == 11,
+               "GP_CONTROL_* values are stored in JOYSTICK_SH.DAT");
+
+// Gamepad field offsets, also stored in JOYSTICK_SH.DAT
 #define GP_FIELD_DPAD    0  // D-Pad and Status
 #define GP_FIELD_STICKS  1  // Digital Sticks
 #define GP_FIELD_BTN0    2  // Face Buttons
 #define GP_FIELD_BTN1    3  // Triggers/Select/Start
 
-extern gamepad_t gamepad;
+// The direction bits of the dpad field, without its type, sticks and connected bits.
+#define GP_DPAD_MASK (GAMEPAD_DPAD_UP | GAMEPAD_DPAD_DOWN | GAMEPAD_DPAD_LEFT | GAMEPAD_DPAD_RIGHT)
 
 extern void init_input_system(void);
 extern void handle_input(void);
-extern bool is_action_pressed(uint8_t player_id, GameAction action);
+extern bool is_action_pressed(GameAction action);
 
 #endif // INPUT_H
