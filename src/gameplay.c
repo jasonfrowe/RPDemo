@@ -339,14 +339,11 @@ static void handle_start_transition(game_transition_t transition)
     } else if (transition == GAME_TRANSITION_UNPAUSE_GAME) {
         tile_mode2_set_paused_banner(false);
     } else if (transition == GAME_TRANSITION_START_NEXT_LEVEL) {
-        if (level_bonus_is_complete()) {
-            if (runtime_state.current_level >= 7) {
-                start_victory_ending();
-            } else {
-                start_next_level();
-            }
+        // Only once the tally is done: level_bonus.c holds START until then.
+        if (runtime_state.current_level >= 7) {
+            start_victory_ending();
         } else {
-            game_state_enter_level_bonus();
+            start_next_level();
         }
     } else if (transition == GAME_TRANSITION_RETRY_LEVEL) {
         restart_current_level();

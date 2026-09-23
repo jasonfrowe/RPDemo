@@ -25,7 +25,7 @@ After clearing a level, a **bonus screen** tallies your kills per enemy type and
 
 ### Boss Fights
 
-Each level ends with a boss encounter.  Bosses have a vulerable that is bright yellow.  Shoot it to deal damage.  Some bosses will only be vunerable after certain conditions are met, which will be telegraphed visually.  For example, Boss Variant Four (Level 4) requires you to destroy all but one of the smaller enemies on screen before its vulnerable point will appear.
+Each level ends with a boss encounter.  Bosses have a vulnerable point that is bright yellow.  Shoot it to deal damage.  Some bosses will only be vulnerable after certain conditions are met, which will be telegraphed visually.  For example, Boss Variant Four (Level 4) requires you to destroy all but one of the smaller enemies on screen before its vulnerable point will appear.
 
 You have **4 minutes** to defeat the boss. If time runs out, the boss retreats and the level is marked **LEVEL FAILED**. Press any button to retry the same level.
 
@@ -42,9 +42,9 @@ Destroying asteroids can reveal power-up capsules. Pickups follow a fixed repeat
 
 ### Health
 
-Your ship has 48 HP. The health bar at the top right turns red when HP drops below 12. You have a brief invincibility window after each hit. Reaching 0 HP triggers a game-over.
+Your ship has 48 HP. The health bar at the top center turns red when HP drops below 12. You have a brief invincibility window after each hit. Reaching 0 HP triggers a game-over.
 
-You get an extra life every 100 000 points. You them wisely. 
+You get an extra life every 100 000 points. Use them wisely. 
 
 ---
 
@@ -65,6 +65,7 @@ You get an extra life every 100 000 points. You them wisely.
 - [Adding Bullets](#adding-bullets)
 - [Gameplay Loop](#gameplay-loop)
 - [Enemies and Collision Detection](#enemies-and-collision-detection)
+- [Gameplay Flow and Level Transitions](#gameplay-flow-and-level-transitions)
 
 ## Introduction
 
@@ -78,7 +79,7 @@ Understanding these ideas first will make every later section much easier to fol
 
 ### System RAM and XRAM
 
-The 6502 sees its normal 64 KB of system RAM (`0x0000–0xFFFF`). This is where program code, the stack, and variables live. The RP6502 also has a second 64 KB called **Extended RAM (XRAM)**. XRAM is *not* directly addressable by the 6502 — there is no `LDA` or `STA` for it. Instead, the RIA chip provides two portals — `ADDR0/RW0` and `ADDR1/RW1` at hardware registers `0xFFE4–0xFFEB` — that let you read and write XRAM one byte at a time with auto-incrementing addresses. The LLVM-MOS SDK's `rp6502.h` wraps this in convenient macros:
+The 6502 sees 63.75 KB of system RAM (`0x0000–0xFEFF`). This is where program code, the stack, and variables live. The RP6502 also has a separate 64 KB called **Extended RAM (XRAM)**. XRAM is *not* directly addressable by the 6502 — there is no `LDA` or `STA` for it. Instead, the RIA chip provides two portals — `ADDR0/RW0` and `ADDR1/RW1` at hardware registers `0xFFE4–0xFFEB` — that let you read and write XRAM one byte at a time with auto-incrementing addresses. The LLVM-MOS SDK's `rp6502.h` wraps this in convenient macros:
 
 ```c
 xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, x_pos_px, 120); // write one struct field into XRAM
@@ -98,15 +99,15 @@ The VGA system has three numbered planes (0, 1, 2). Each plane has two independe
 - A **fill layer** — a tile map, bitmap, or console that covers the plane background.
 - A **sprite layer** — a pool of hardware sprites drawn over the fill.
 
-Different scanline ranges of the same plane can use different modes. This is how the HUD occupies just the top 24 scanlines of plane 2, while the gameplay tiles use the remaining scanlines.
+Different scanline ranges of the same plane can use different modes. This is how the gameplay tiles and sprites on planes 0 and 1 stay out of the top 24 scanlines, while the HUD tile map on plane 2 covers the full screen.
 
 This demo's plane layout:
 
 | Plane | Fill layer | Sprite layer |
 |---|---|---|
-| 0 | Background star tiles (scanlines 24–239) |  Projectile sprites (full screen) |
+| 0 | Background star tiles (scanlines 24–239) |  Projectile sprites (scanlines 24–239) |
 | 1 | Foreground star tiles (scanlines 24–239) | Enemy sprites (scanlines 24–239) |
-| 2 | HUD tile map (scanlines 0–23) | Player |
+| 2 | HUD tile map (full screen) | Player (full screen) |
 
 ### Canvas and Vsync
 
@@ -142,7 +143,7 @@ Within your C code, XRAM is addressed `0x0000–0xFFFF`, and `XRAM_PLAYER_DATA` 
 `rp6502_map()` is what lets CMake use the name at all. When CMake configures, it compiles `src/xram.h` and reads the value of every `#define` that matches `XRAM_.*`. Each address is written once, in the header, and never repeated in `CMakeLists.txt`. Change the header and the next build configures again, so CMake always agrees with the C code. It must come after `add_executable()` and before any `rp6502_asset()` that uses its names.
 
 Quick mental model for addresses:
-- **System RAM (`0x0000–0xFFFF`)**: normal 6502-visible RAM for code/data/stack.
+- **System RAM (`0x0000–0xFEFF`)**: normal 6502-visible RAM for code/data/stack.
 - **XRAM (`0x0000–0xFFFF`)**: separate 64 KB memory accessed through RIA portals (`ADDR0/RW0`, `ADDR1/RW1`). Every `XRAM_` name in `src/xram.h` is an address here.
 - **ROM-packaging XRAM alias (`0x10000–0x1FFFF`)**: build-time/load-time notation meaning "copy into XRAM at low 16 bits". `XRAM()` writes it for you.
 
@@ -263,7 +264,7 @@ Before we start graphics setup, here is what is already provided in `images/` an
 | `Player_4bpp.bin` | 768 bytes | Player sprite sheet (6 frames, 16x16, 4bpp). |
 | `Projectiles_4bpp.bin` | 416 bytes | Projectiles, pickups, asteroids, and explosion frames (13 frames, 8x8, 4bpp). |
 | `Enemies_4bpp.bin` | 22528 bytes | Enemy + boss sprite sheet (176 frames, 16x16, 4bpp). |
-| `StarFields_tiles_4bpp.bin` | 8096 bytes | Shared tile pixel data for BG/FG/HUD; 8x8 tiles at 4bpp (currently 253 tiles present, 256 max supported). |
+| `StarFields_tiles_4bpp.bin` | 8192 bytes | Shared tile pixel data for BG/FG/HUD; 8x8 tiles at 4bpp (256 tiles). |
 | `StarFields_BG_map.bin` | 2400 bytes | Background tilemap index grid (40x60, 1 byte per tile). |
 | `StarFields_FG_map.bin` | 2400 bytes | Foreground tilemap index grid (40x60, 1 byte per tile). |
 | `StarFields_HUD_map.bin` | 1200 bytes | HUD tilemap index grid (40x30, 1 byte per tile). Also packaged as the named ROM asset `StarFields_HUD_map.bin`, which the game reads back to restore the title HUD. |
@@ -452,7 +453,7 @@ The sizes and counts that the layout and the game code use live in ```constants.
 
 // Sprite and tile data. The XRAM layout that holds them is src/xram.h.
 #define PLAYER_SPRITE_SIZE_PX   16                 // Player sprite is 16x16 pixels
-#define PLAYER_FRAME_COUNT      6                  // idle, left, right, explode frames (3, 4, 5)
+#define PLAYER_FRAME_COUNT      6                  // idle, right, left, explode frames (3, 4, 5)
 
 #endif // CONSTANTS_H
 ```
@@ -667,7 +668,7 @@ Using this repo's actual art assets, the numbers look like this:
 | Asset | Current size at 4bpp | Equivalent at 8bpp | Equivalent at 16bpp |
 |---|---:|---:|---:|
 | Player sprite sheet (`6` frames, `16x16`) | 768 bytes | 1536 bytes | 3072 bytes |
-| Tile set (`StarFields_tiles_4bpp.bin`, currently `253` tiles, `8x8`) | 8096 bytes | 16192 bytes | 32384 bytes |
+| Tile set (`StarFields_tiles_4bpp.bin`, `256` tiles, `8x8`) | 8192 bytes | 16384 bytes | 32768 bytes |
 | Projectile sheet (`13` frames, `8x8`) | 416 bytes | 832 bytes | 1664 bytes |
 | Enemy sheet (`176` frames, `16x16`) | 22528 bytes | 45056 bytes | 90112 bytes |
 
@@ -681,8 +682,8 @@ That gives these total XRAM requirements for the current visual assets:
 | Format choice | Total asset memory |
 |---|---:|
 | Current 4bpp setup | 37904 bytes |
-| Same assets at 8bpp | 69616 bytes |
-| Same assets at 16bpp | 133232 bytes |
+| Same assets at 8bpp | 69808 bytes |
+| Same assets at 16bpp | 133616 bytes |
 
 Since XRAM is only 65536 bytes total, the current 4bpp setup fits, but the same art at 8bpp would already overflow XRAM before accounting for config structs, palettes, input buffers, or OPL registers. That is the strongest practical reason to stay with 4bpp unless you truly need more colors.
 
@@ -737,7 +738,7 @@ Both are required. The map by itself is only tile numbers; it does not contain t
 
 ### Exporting tilemaps with `tools/export_map.lua`
 
-This project includes [tools/export_map.lua](/Users/rowe/Software/rp6502/RPDemo/tools/export_map.lua), which is the exact tool used to export the game's tilemaps.
+This project includes [tools/export_map.lua](tools/export_map.lua), which is the exact tool used to export the game's tilemaps.
 
 What the script does:
 - Reads the **active sprite** in Aseprite
@@ -790,7 +791,7 @@ That direct mapping is the main reason this workflow is nice: what you paint in 
 
 ### Study the source art
 
-The [Sprites](/Users/rowe/Software/rp6502/RPDemo/Sprites) folder contains the Aseprite source files used to build this game. These are useful reference material if you are learning the workflow or want to reuse the same setup for your own project.
+The [Sprites](Sprites) folder contains the Aseprite source files used to build this game. These are useful reference material if you are learning the workflow or want to reuse the same setup for your own project.
 
 Relevant files include:
 - `Player.aseprite`
@@ -842,7 +843,7 @@ typedef struct
 
 The input members go before the sprite data, which pushes `XRAM_PLAYER_DATA` up by 72 bytes.  Nothing else needs to change: the C code and `XRAM(XRAM_PLAYER_DATA)` in CMakeLists.txt both pick up the new address on the next build.  `input.c` reads the state from `XRAM_KEYBOARD` and `XRAM_GAMEPAD`, so `input.h` includes `xram.h` too.
 
-and then update your main function look like:
+and then update your main function to look like:
 
 ```c
 int main(void)
@@ -1036,7 +1037,7 @@ This code will not work until we set up the tilemaps and load the tile data into
 - ```images/StarFields_BG_map.bin``` - This contains the tile index for each 8x8 tile in the background layer (layer 0).  It is a 40x60 tilemap.  We can have up to 256 tiles, so we need 1 byte per tile, which means this tilemap requires 2400 bytes of memory (40 tiles * 60 tiles * 1 byte per tile = 2400 bytes).  Notice that the tilemap is larger than the screen size, this allows us to scroll the background to create a parallax effect.
 - ```images/StarFields_FG_map.bin``` - This will be our foreground layer (layer 1) and it is also a 40x60 tilemap with 1 byte per tile, so it also requires 2400 bytes of memory.
 - ```images/StarFields_HUD_map.bin``` - This will be our HUD layer (layer 2) and will be a 40x30 tilemap, since we don't need to scroll it.  
-- ```images/StarFields_tiles_4bpp.bin``` - This contains the pixel data for our tiles.  Each tile is 8x8 pixels and we are using a 4bpp format, which means each pixel takes up 4 bits, so we can fit two pixels in one byte.  Therefore, each tile requires 32 bytes of memory (8 * 8 * 4 bits / 8 bits per byte = 32 bytes).  The engine layout reserves space for up to 256 tiles (8192 bytes), while the current file contains 253 tiles (8096 bytes).  
+- ```images/StarFields_tiles_4bpp.bin``` - This contains the pixel data for our tiles.  Each tile is 8x8 pixels and we are using a 4bpp format, which means each pixel takes up 4 bits, so we can fit two pixels in one byte.  Therefore, each tile requires 32 bytes of memory (8 * 8 * 4 bits / 8 bits per byte = 32 bytes).  The engine layout reserves space for 256 tiles (8192 bytes), and the current file contains all 256.  
 
 Note, we are going to share 1 set of tiles for all 3 layers, but you can have a different tileset for each layer if you want.  We will learn how to generate tile maps later on, for now we are just learning how to use them.  The tilemaps and tileset are loaded into XRAM as assets in our CMakeLists.txt file, just like we did with the sprite.  We will then set up the tilemaps in XRAM and point the VGA system to them.  Once that is done, we can update the scroll position of the tilemaps in our main loop to create a parallax scrolling effect.
 
@@ -1054,7 +1055,7 @@ Let's look at part of the code for initializing the tilemaps in ```tile_mode2.c`
     xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_tile_ptr,    XRAM_STARFIELD_TILES_DATA);  
 
     // Mode 2 args: OPTIONS, CONFIG, PLANE, BEGIN, END
-    // Plane 0 = background fill layer (behind sprite plane 1)
+    // Plane 0 = background fill layer, below the HUD rows
     if (xreg_vga_mode2(MODE2_4BPP | MODE2_8X8, XRAM_TILE_BG_CONFIG, 0, HUD_TOP_PX, 0) < 0) {
         puts("xreg_vga_mode2 failed");
         return;
@@ -1093,7 +1094,7 @@ We then point to the XRAM address where our tilemap data is stored, as well as t
 ```c
     xreg_vga_mode2(MODE2_4BPP | MODE2_8X8, XRAM_TILE_BG_CONFIG, 0, HUD_TOP_PX, 0)
 ```
-We then enable the tilemap layer by calling `xreg_vga_mode2()`, which programs Mode 2, the tilemap mode.  The options `MODE2_4BPP | MODE2_8X8` select 8x8 tiles with an 4-bit color index (which allows for up to 16 colors in our palette).  We specify that this is plane 0, which means it will be behind the sprites on plane 1.  We also specify the begin and end scanlines for this layer, in this case we begin at `HUD_TOP_PX`, excluding the top 24 scanlines to leave room for our HUD layer.
+We then enable the tilemap layer by calling `xreg_vga_mode2()`, which programs Mode 2, the tilemap mode.  The options `MODE2_4BPP | MODE2_8X8` select 8x8 tiles with an 4-bit color index (which allows for up to 16 colors in our palette).  We specify that this is plane 0, which means it will be behind the player sprite on plane 2.  We also specify the begin and end scanlines for this layer, in this case we begin at `HUD_TOP_PX`, excluding the top 24 scanlines to leave room for our HUD layer.
 
 We repeat this process for the foreground layer (layer 1) and the HUD layer (layer 2), each with its own configuration member in the layout: 
 
@@ -1168,7 +1169,7 @@ Each tile map is one byte per tile, so a 40x60 map is `uint8_t [60][40]`, 2400 b
 
 // Sprite and tile data. The XRAM layout that holds them is src/xram.h.
 #define PLAYER_SPRITE_SIZE_PX   16                 // Player sprite is 16x16 pixels
-#define PLAYER_FRAME_COUNT      6                  // idle, left, right, explode frames (3, 4, 5)
+#define PLAYER_FRAME_COUNT      6                  // idle, right, left, explode frames (3, 4, 5)
 
 #define STARFIELD_BG_WIDTH      40                 // Width of starfield background in tiles
 #define STARFIELD_BG_HEIGHT     60                 // Height of starfield background in tiles
@@ -1186,7 +1187,7 @@ Each tile map is one byte per tile, so a 40x60 map is `uint8_t [60][40]`, 2400 b
 
 #endif // CONSTANTS_H
 ```
-Notice how the layout now holds all of our XRAM, including the sprite data, tilemap data, palette data and input, grouped as configurations, then palettes, then input, then the data loaded from the ROM. This allows us to easily keep track of where everything is in memory and avoid any conflicts, because two members of a struct can never overlap. You may notice that our player sprite is actually 3 frames of animation (idle, left, right) which is why we have allocated 384 bytes for the player sprite data (3 frames * 128 bytes per frame = 384 bytes). We will show how to update the sprite data in XRAM to animate the player in a later section. We have also defined some constants for the screen dimensions and the size of our sprite and tilemaps.
+Notice how the layout now holds all of our XRAM, including the sprite data, tilemap data, palette data and input, grouped as configurations, then palettes, then input, then the data loaded from the ROM. This allows us to easily keep track of where everything is in memory and avoid any conflicts, because two members of a struct can never overlap. You may notice that our player sprite is actually 6 frames of animation (idle, right, left, and 3 explosion frames) which is why we have allocated 768 bytes for the player sprite data (6 frames * 128 bytes per frame = 768 bytes). We will show how to update the sprite data in XRAM to animate the player in a later section. We have also defined some constants for the screen dimensions and the size of our sprite and tilemaps.
 
 There is no hex math to do and nothing to copy by hand: every asset is loaded at its `XRAM_` name. Next we update CMakeLists.txt to include the new assets:
 
@@ -1231,9 +1232,9 @@ Suggested asset flow:
 
 - Author and save: `music/MyTrack.fur`
 - Export: `music/MyTrack.vgm`
-- Add as ROM asset in CMake with a `RESOURCE.###.vgm` name for runtime loading.
+- Add as ROM asset in CMake with a `MyTrack.vgm` name for runtime loading.
 
-The key files are ```music.c```, ```opl.c```, ```vgm.c``` and their corresponding header files.  You can add these to your CMakeLists.txt and include the headers in main.c.  The music system will read the VGM file from the disk and stream the OPL commands to the sound chip in real time. VGM tracks are stored as named ROM assets (e.g. `RESOURCE.001.vgm`) and opened at runtime via `open("ROM:RESOURCE.001.vgm", O_RDONLY)`. 
+The key files are ```music.c```, ```opl.c```, ```vgm.c``` and their corresponding header files.  You can add these to your CMakeLists.txt and include the headers in main.c.  The music system will read the VGM file from the disk and stream the OPL commands to the sound chip in real time. VGM tracks are stored as named ROM assets (e.g. `Level_01.vgm`) and opened at runtime via `open("ROM:Level_01.vgm", O_RDONLY)`. 
 
 ### Development vs Distribution
 
@@ -1247,10 +1248,10 @@ In practice, the same game code can support both styles:
 
 ```c
 // Development: read from external storage
-music_set_track("music/RESOURCE.001.vgm");
+music_set_track("Level_01.vgm");
 
 // Finished release: read from the bundled ROM asset
-music_set_track("ROM:RESOURCE.001.vgm");
+music_set_track("ROM:Level_01.vgm");
 ```
 
 Recommended workflow:
@@ -1259,7 +1260,7 @@ Recommended workflow:
 
 If you want CMake to skip packaging named ROM assets while developing, a simple toggle works well.
 
-In `CMakeLists.txt`:
+In `CMakeLists.txt` (an optional pattern; this repo's `CMakeLists.txt` doesn't use it):
 
 ```cmake
 option(RPSTARHOPPER_PACKAGE_ROM_ASSETS "Bundle named ROM assets" ON)
@@ -1267,8 +1268,8 @@ option(RPSTARHOPPER_PACKAGE_ROM_ASSETS "Bundle named ROM assets" ON)
 if (RPSTARHOPPER_PACKAGE_ROM_ASSETS)
     target_compile_definitions(RPStarHopper PRIVATE ASSET_PREFIX="ROM:")
 
-    rp6502_asset(RPStarHopper RESOURCE.001.vgm music/RESOURCE.001.vgm)
-    rp6502_asset(RPStarHopper RESOURCE.002.vgm music/RESOURCE.002.vgm)
+    rp6502_asset(RPStarHopper Level_01.vgm music/Level_01.vgm)
+    rp6502_asset(RPStarHopper Level_02.vgm music/Level_02.vgm)
     # ...other named ROM assets...
 else()
     target_compile_definitions(RPStarHopper PRIVATE ASSET_PREFIX="")
@@ -1284,7 +1285,7 @@ In code, build paths from one prefix:
 
 #define TRACK_PATH(name) ASSET_PREFIX name
 
-music_set_track(TRACK_PATH("RESOURCE.001.vgm"));
+music_set_track(TRACK_PATH("Level_01.vgm"));
 ```
 
 Then configure per build:
@@ -1301,10 +1302,10 @@ For development builds, upload only changed files instead of a full ROM image. T
 
 ```bash
 # Creates/uses .rp6502 with saved device settings
-python3 ./tools/rp6502.py --config .rp6502 upload music/RESOURCE.001.vgm
+python3 ./tools/rp6502.py --config .rp6502 upload music/Level_01.vgm
 ```
 
-If you upload to a subdirectory on USB media, include that directory in runtime paths (for example `music/RESOURCE.001.vgm`).
+If you upload to a subdirectory on USB media, include that directory in runtime paths (for example `music/Level_01.vgm`).
 
 The OPL2 needs XRAM too: 256 bytes that will contain all the OPL2 registers.  Copy the `xram.h` block from the "Yamaha OPL2 FM Sound Generator" section of the [RIA datasheet](https://picocomputer.github.io/ria.html), which defines `opl_t` and `xreg_ria_opl()`, into ```src/xram.h```.  Then add an `opl_t` member to the layout, as the very first member, and give it a name:
 
@@ -1384,7 +1385,7 @@ This is great!  We have implemented sprites, tilemaps, and music in our game!  W
 
 We can now add frame-based animation to our player sprite by updating the sprite data in XRAM.  We can also create palette swapping effects by updating the palette data in XRAM.  This allows us to create a wide range of visual effects without needing to make expensive system calls, as we are directly manipulating the data in XRAM that the VGA system is using to render the sprites and tiles. This is the main reason for using Mode-5 for our sprites.  It saves XRAM and provides very fast updates for animations and palette swaps.
 
-If you look at ```Player_4bpp.bin``` you will see that it contains 3 frames of animation for the player sprite: an idle frame, a left movement frame, and a right movement frame.  Each frame is 128 bytes (16x16 pixels at 4bpp), so the total size of the sprite data is 384 bytes.  We can update the sprite's current frame by changing the XRAM address that the VGA system is using to fetch the sprite data.  This allows us to create animations by simply updating the frame index in XRAM. 
+If you look at ```Player_4bpp.bin``` you will see that it contains 6 frames of animation for the player sprite: an idle frame, a right movement frame, a left movement frame, and 3 explosion frames.  Each frame is 128 bytes (16x16 pixels at 4bpp), so the total size of the sprite data is 768 bytes.  We can update the sprite's current frame by changing the XRAM address that the VGA system is using to fetch the sprite data.  This allows us to create animations by simply updating the frame index in XRAM. 
 
 We can also create palette swapping effects by updating the palette data in XRAM.  For example, we could change the player's colors when they take damage or pick up a power-up by updating the palette entries in XRAM.  This allows us to create dynamic visual effects without needing to change the sprite data itself, which can save memory and allow for more complex animations.  
 
@@ -1399,7 +1400,7 @@ void player_controller_update(void)
     bool moving_left = is_action_pressed(ACTION_MOVE_LEFT);
     bool moving_right = is_action_pressed(ACTION_MOVE_RIGHT);
 
-    int32_t speed_q8 = SPEED_TO_Q8(player_speed);
+    int16_t speed_q8 = SPEED_TO_Q8(player_speed);
 
     if (moving_up)    player_y_q8 -= speed_q8;
     if (moving_down)  player_y_q8 += speed_q8;
@@ -1416,12 +1417,14 @@ void player_controller_update(void)
         sprite_mode5_set_frame(0);
     }
 
-    int32_t max_x_q8 = ((int32_t)(SCREEN_WIDTH  - PLAYER_SPRITE_SIZE_PX)) << Q8_SHIFT;
-    int32_t max_y_q8 = ((int32_t)(SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX)) << Q8_SHIFT;
+    int16_t max_x_q8 = (int16_t)((SCREEN_WIDTH  - PLAYER_SPRITE_SIZE_PX) << Q8_SHIFT);
+    int16_t max_y_q8 = (int16_t)((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) << Q8_SHIFT);
 
     if (player_x_q8 < 0)         player_x_q8 = 0;
     if (player_x_q8 > max_x_q8) player_x_q8 = max_x_q8;
-    if (player_y_q8 < 0)         player_y_q8 = 0;
+    if (player_y_q8 < (int16_t)(HUD_TOP_PX << Q8_SHIFT)) {
+        player_y_q8 = (int16_t)(HUD_TOP_PX << Q8_SHIFT);
+    }
     if (player_y_q8 > max_y_q8) player_y_q8 = max_y_q8;
 
     sprite_mode5_set_position((int16_t)(player_x_q8 >> Q8_SHIFT), (int16_t)(player_y_q8 >> Q8_SHIFT));
@@ -1961,7 +1964,7 @@ void sprite_mode5_init_enemies(void) {
 ```
 
 Important details:
-- Plane `0` is used for enemies (with tiles and player in higher layers)
+- Plane `1` is used for enemies (with the HUD and player in higher plane `2`)
 - `BEGIN=HUD_TOP_PX` (scanline 24) keeps them out of the HUD scanlines
 - All enemy sprites start off-screen at `(-32, -32)`
 
@@ -2178,7 +2181,7 @@ Rather than creating a second projectile system for enemy bullets, we expanded t
 
 Slot usage is now:
 - player bullets: slots `0..7`
-- enemy bullets: slots `8..31`
+- enemy bullets: slots `8..39`
 
 In `projectile.h` this is represented with:
 
@@ -2336,7 +2339,7 @@ Audio timing during destruction/game-over:
 - After `GAME OVER` sprites fully assemble, there is a 2-second hold before fast title-style scroll transition starts
 
 Player collision box tuning:
-- Collision checks now use a centered `14x14` hitbox inside the `16x16` sprite (`(PLAYER_SPRITE_SIZE_PX - PLAYER_HITBOX_SIZE) / 2` offset)
+- Collision checks now use a centered `13x13` hitbox inside the `16x16` sprite (`(PLAYER_SPRITE_SIZE_PX - PLAYER_HITBOX_SIZE) / 2` offset)
 - Post-hit invulnerability window is `108` frames (twice the previous `54`-frame value)
 
 Title screen player effect:
@@ -2407,10 +2410,14 @@ Gameplay tracks by level:
 - Level 5: `music/Level_05.vgm`
 - Level 6: `music/Level_06.vgm`
 - Level 7+: `music/Level_07.vgm` (also the fallback for every level past 7 -- there's no higher-level track, so the last one just keeps playing)
-- Boss battles (any level): `music/Boss.vgm`, overriding whichever level track was playing
+- Boss battles (levels 1–6): `music/Boss.vgm`, overriding whichever level track was playing
+- Final boss (level 7): `music/BossFinal.vgm`
 
 Intermission track:
 - Between levels: `music/Bonus.vgm`
+
+Victory track:
+- `YOU WIN` screen: `music/Victory.vgm`
 
 #### Game Over State
 
@@ -2434,7 +2441,7 @@ Foreground tile behavior on game-over transition:
 
 Exit rules from game-over:
 - Any button, or
-- 60-second timeout
+- 108.8-second timeout
 
 Both paths return to title and reset player, enemies, projectiles, score, HUD health, and title music.
 
@@ -2516,7 +2523,7 @@ Index 6 (chase then detonate barrage):
 If you want balancing that feels predictable, tune in this order:
 1. `ENEMY_INTER_SPAWN_FRAMES` and `ENEMY_INTER_WAVE_FRAMES`.
 2. Per-pattern attack hold timers (`timer`, `TYPE3_ATTACK_DURATION_FRAMES`).
-3. Bullet cadence values (`fire_timer` resets, `TYPE3_SPIRAL_FIRE_INTERVAL`).
+3. Bullet cadence values (`fire_timer` resets, `TYPE3_WAVE_FIRE_INTERVAL`).
 4. Bullet and movement speeds.
 
 ## Gameplay Flow and Level Transitions
@@ -2563,7 +2570,7 @@ On game-over entry:
 2. Music switches to game-over track.
 3. Background scroll transitions to title-style fast scrolling (within `GAME_OVER_SCROLL_START_DELAY_FRAMES = 120` frames = 2 seconds).
 4. Player sprite is hidden after the 2-second hold so the `GAME OVER` letters are the focus.
-5. Enemy sprite frames 7–14 are repurposed to spell out `GAME OVER`.
+5. Enemy sprite frames 42–49 are repurposed to spell out `GAME OVER`.
 6. Letters fly in from various off-screen positions and converge on screen with slower motion than the background.
 
 #### Exit Rules

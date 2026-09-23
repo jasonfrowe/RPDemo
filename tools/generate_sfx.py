@@ -16,11 +16,11 @@ Channel assignment (see src/sfx.h): two independent one-shot, priority-
 queued streams, one per channel, so a burst of enemy events can never
 interrupt a player cue (or vice versa) the way sharing one channel used to.
   - Channel 7 (sfx_play_player()): everything triggered by the player --
-    fire, hit, destroyed, pickup, extra life, level-clear fanfare, and the
-    low-energy warning beep (retriggered periodically by sfx.c while
-    health is low -- not a looped VGM, the game code retriggers this same
-    short clip on a timer, matching a classic arcade pulse rather than a
-    sustained drone).
+    fire, hit, destroyed, pickup, bonus tally, extra life, level-clear and
+    victory fanfares, and the low-energy warning beep (retriggered
+    periodically by sfx.c while health is low -- not a looped VGM, the
+    game code retriggers this same short clip on a timer, matching a
+    classic arcade pulse rather than a sustained drone).
   - Channel 8 (sfx_play_enemy()): everything triggered by an enemy --
     fire, destroyed.
 
@@ -204,9 +204,9 @@ class SfxBuilder:
 
 
 # ---------------------------------------------------------------------------
-# The 8 SFX. Names are the ROM asset ids (see CMakeLists.txt / src/sfx.h),
-# kept to 8.3-safe lengths like the music tracks (see tracks.py's
-# docstring for why).
+# The 11 SFX, shipped as one XRAM blob (music/sfx/sfx_xram.bin at
+# XRAM_SFX_DATA, see write_xram_bundle()). Names become the
+# SFX_<NAME>_OFFSET/_LEN macros in src/sfx_layout.h.
 # ---------------------------------------------------------------------------
 
 

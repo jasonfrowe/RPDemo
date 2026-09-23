@@ -9,7 +9,7 @@
 
 // Sprite and tile data. The XRAM layout that holds them is src/xram.h.
 #define PLAYER_SPRITE_SIZE_PX   16                 // Player sprite is 16x16 pixels
-#define PLAYER_FRAME_COUNT      6                  // idle, left, right, explode frames (3, 4, 5)
+#define PLAYER_FRAME_COUNT      6                  // idle, right, left, explode frames (3, 4, 5)
 
 #define STARFIELD_BG_WIDTH      40                 // Width of starfield background in tiles
 #define STARFIELD_BG_HEIGHT     60                 // Height of starfield background in tiles

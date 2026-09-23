@@ -27,7 +27,7 @@ with it.
 ## Quick start
 
 ```sh
-python3 tools/generate_music.py --list                  # show all 11 track slots
+python3 tools/generate_music.py --list                  # show all 12 track slots
 python3 tools/generate_music.py --track all              # (re)generate every track, fresh roll
 python3 tools/generate_music.py --track boss             # regenerate just one
 python3 tools/generate_music.py --track boss --seed 1234 # reproduce a specific roll
@@ -48,7 +48,7 @@ baseline to start hand-tuning from.
 `--track` accepts either the resource id (e.g. `Level_01`, `Boss`) or a
 friendly alias (`title`, `boss`, `level1`, ...) — see `--list` for the full
 table. The resource id is also the ROM asset name the game code opens via
-`"ROM:<resource>"` and the filename stem this tool writes -- see
+`"ROM:<resource>.vgm"` and the filename stem this tool writes -- see
 `tracks.py`'s module docstring.
 
 ## Hand-tuning a roll: `--vol` / `--patch`
@@ -194,12 +194,13 @@ Mapping confirmed by reading the game's source directly (`src/gameplay.c`,
 | `Level_05` | Level 5 | `level5` | 0.60 |
 | `Level_06` | Level 6 | `level6` | 0.68 |
 | `Level_07` | Level 7 (+ fallback for every level past 7) | `level7` | 0.75 |
-| `Boss` | Boss battle (any level) | `boss` | 0.95 |
+| `Boss` | Boss battle (levels 1-6) | `boss` | 0.95 |
 | `Bonus` | Bonus / reward round (between levels) | `bonus`, `reward` | 0.15 |
-| `Gameover` | Game over (win or lose) | `gameover` | 0.55 |
+| `Gameover` | Game over (loss) | `gameover` | 0.55 |
+| `Victory` | Victory / You Win ending (level 7 cleared) | `victory`, `win` | 0.75 |
 
 Each `Resource` id doubles as the ROM asset name the game opens via
-`"ROM:<resource>"` (see `CMakeLists.txt`'s `rp6502_asset(...)` lines) and
+`"ROM:<resource>.vgm"` (see `CMakeLists.txt`'s `rp6502_asset(...)` lines) and
 this tool's output filename stem — `music/<resource>.vgm`,
 `music/fur_levels/<resource>.fur`. Until this table, each level reused one
 of 9 tracks (level 1 & 5 shared one, 2 & 6 shared another) under opaque
@@ -296,7 +297,7 @@ tools/
   musicgen/
     furwriter.py           # low-level .fur binary writer (see below)
     instruments.py         # parses RPTracker's gm_bank, GM-program-range role lookup
-    tracks.py               # the 11-track registry + MoodPreset per track
+    tracks.py               # the 12-track registry + MoodPreset per track
     compose.py              # the procedural composer(s) described above
     drum_patterns.py         # Pocket Operations-transcribed drum pattern bank (styles 1-8)
 music/
@@ -360,8 +361,8 @@ other:
 
 | Channel | Role | Game-code entry point |
 |---|---|---|
-| 7 | Everything triggered by the player | `sfx_play_player(path, priority)` |
-| 8 | Everything triggered by an enemy | `sfx_play_enemy(path, priority)` |
+| 7 | Everything triggered by the player | `sfx_play_player(sfx_addr, priority)` |
+| 8 | Everything triggered by an enemy | `sfx_play_enemy(sfx_addr, priority)` |
 
 A same-or-higher priority call always cuts in ("newest wins" within a
 tier, e.g. two enemies dying the same frame); a strictly lower one is
@@ -377,9 +378,11 @@ tiers.
 | `PlyrHit` | 7 | `player_controller_apply_damage()`, health > 0 |
 | `PlyrDie` | 7 | `player_controller_apply_damage()`, health hits 0 |
 | `PickUp` | 7 | `projectile_try_collect_pickups()` (energy/speed/power, shared) |
+| `Tally` | 7 | `level_bonus_advance()` (bonus-stage kill count, score payout, and health refill ticks) |
 | `LvlClear` | 7 | boss health hits 0 (`gameplay_boss.c`), or level clear with no boss (`level_bonus_begin()`) -- never both, see the `boss_defeated` guard there |
 | `LowEnrgy` | 7 | `sfx.c`'s own per-frame poll of `player_controller_is_low_health()` -- a short clip retriggered on a timer, not a looped VGM, for a classic arcade pulsing alert rather than a sustained drone |
 | `XtraLife` | 7 | `gameplay_update_extra_life_awards()`, only when a life is actually granted (not at the 3-life cap) |
+| `Victory` | 7 | `gameplay_update_victory_state()` (You Win ending) |
 
 `PlyrFire`/`EnmyFire` are pitched an octave apart (and kept deliberately
 clean -- low feedback, sine waveform) so they stay distinguishable by ear
@@ -391,9 +394,6 @@ inspired directly by inspecting RPPacman's own extra-life cue (a reg/val/
 delay dump of its `sfxextralife`/`PacManCE_19.BIN`), it holds a single
 note and gets its shimmer from rapidly stepping the carrier's volume up
 and down instead (see `SfxBuilder.tremolo()`).
-
-Names are 8.3-safe (`PlyrFire`, not `PlayerFireSound`) for the same reason
-the music tracks are -- see tracks.py's module docstring.
 
 ## Where this comes from
 
