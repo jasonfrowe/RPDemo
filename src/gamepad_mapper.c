@@ -41,12 +41,6 @@ static const uint8_t action_map[] = {
 _Static_assert(sizeof(action_map) == sizeof(prompt_labels) / sizeof(prompt_labels[0]) - 1,
                "one GP_CONTROL_* per prompt");
 
-typedef struct {
-    uint8_t action_id;
-    uint8_t field;  // GP_FIELD_DPAD, GP_FIELD_STICKS, GP_FIELD_BTN0 or GP_FIELD_BTN1
-    uint8_t mask;
-} JoystickMapping;
-
 static JoystickMapping mappings[GP_CONTROL_COUNT];
 static uint8_t num_mappings = 0;
 
@@ -57,12 +51,12 @@ static void wait_for_all_released(void)
         if (RIA.vsync == vsync_last) continue;
         vsync_last = RIA.vsync;
 
-        RIA.addr0 = XRAM_GAMEPAD;
-        RIA.step0 = 1;
-        uint8_t d  = RIA.rw0 & GP_DPAD_MASK;
-        uint8_t s  = RIA.rw0;
-        uint8_t b0 = RIA.rw0;
-        uint8_t b1 = RIA.rw0;
+        uint8_t pad[4];
+        gamepad_read_raw(pad);
+        uint8_t d  = pad[GP_FIELD_DPAD] & GP_DPAD_MASK;
+        uint8_t s  = pad[GP_FIELD_STICKS];
+        uint8_t b0 = pad[GP_FIELD_BTN0];
+        uint8_t b1 = pad[GP_FIELD_BTN1];
         if (d == 0 && s == 0 && b0 == 0 && b1 == 0) return;
     }
 }
@@ -76,12 +70,12 @@ static bool wait_for_any_button(uint8_t* field, uint8_t* mask)
         if (RIA.vsync == vsync_last) continue;
         vsync_last = RIA.vsync;
 
-        RIA.addr0 = XRAM_GAMEPAD;
-        RIA.step0 = 1;
-        uint8_t d = RIA.rw0 & GP_DPAD_MASK;
-        uint8_t s = RIA.rw0;
-        uint8_t b0 = RIA.rw0;
-        uint8_t b1 = RIA.rw0;
+        uint8_t pad[4];
+        gamepad_read_raw(pad);
+        uint8_t d = pad[GP_FIELD_DPAD] & GP_DPAD_MASK;
+        uint8_t s = pad[GP_FIELD_STICKS];
+        uint8_t b0 = pad[GP_FIELD_BTN0];
+        uint8_t b1 = pad[GP_FIELD_BTN1];
 
         if ((d & (uint8_t)~prev_dpad) != 0) {
             *field = GP_FIELD_DPAD;
@@ -135,18 +129,10 @@ int main(void)
         num_mappings++;
 
         while (true) {
-            RIA.addr0 = XRAM_GAMEPAD;
-            RIA.step0 = 1;
-            uint8_t d = RIA.rw0 & GP_DPAD_MASK;
-            uint8_t s = RIA.rw0;
-            uint8_t b0 = RIA.rw0;
-            uint8_t b1 = RIA.rw0;
-            bool held = false;
-            if (f == GP_FIELD_DPAD && (d & m)) held = true;
-            if (f == GP_FIELD_STICKS && (s & m)) held = true;
-            if (f == GP_FIELD_BTN0 && (b0 & m)) held = true;
-            if (f == GP_FIELD_BTN1 && (b1 & m)) held = true;
-            if (!held) break;
+            uint8_t pad[4];
+            gamepad_read_raw(pad);
+            pad[GP_FIELD_DPAD] &= GP_DPAD_MASK;
+            if ((pad[f] & m) == 0) break;
         }
     }
 

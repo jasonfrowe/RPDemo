@@ -4,20 +4,26 @@
 // Frames a screen waits, once it is ready, before START is accepted.
 #define START_GUARD_FRAMES 60
 
+// START's debounce state: idle (not yet armed), armed (released, waiting for
+// a press), or pressed (press seen, waiting for release to fire).
+typedef enum {
+    START_IDLE,
+    START_ARMED,
+    START_PRESSED,
+} start_state_t;
+
 static game_state_t g_state = GAME_STATE_TITLE;
-static bool g_start_armed = false;
+static start_state_t g_start_state = START_IDLE;
 static bool g_pause_armed = false;
 static bool g_start_held = false;
 static uint8_t g_start_guard = 0;
-static bool g_start_down = false;
 static game_state_t g_paused_from_state = GAME_STATE_PLAYING;
 
 // Both buttons need a release before their next press counts, so the press
 // that caused a transition can't cause another one.
 static void disarm_buttons(void)
 {
-    g_start_armed = false;
-    g_start_down = false;
+    g_start_state = START_IDLE;
     g_pause_armed = false;
 }
 
@@ -37,16 +43,14 @@ game_state_t game_state_get(void)
 void game_state_hold_start(void)
 {
     g_start_held = true;
-    g_start_armed = false;
-    g_start_down = false;
+    g_start_state = START_IDLE;
 }
 
 void game_state_guard_start(void)
 {
     g_start_held = false;
     g_start_guard = START_GUARD_FRAMES;
-    g_start_armed = false;
-    g_start_down = false;
+    g_start_state = START_IDLE;
 }
 
 bool game_state_start_ready(void)
@@ -69,12 +73,15 @@ game_transition_t game_state_handle_buttons(bool start_pressed, bool pause_press
     // Advancing takes no press, then a press, then no press -- all seen
     // after the prompt appears.
     if (g_start_held) {
-        g_start_armed = false;
+        g_start_state = START_IDLE;
     } else if (g_start_guard > 0) {
         g_start_guard--;
-        g_start_armed = false;
-    } else if (!start_pressed) {
-        g_start_armed = true;
+        g_start_state = START_IDLE;
+    } else if (!start_pressed && g_start_state != START_PRESSED) {
+        // Don't re-arm on the frame START is released -- that's the frame
+        // that still needs to read as START_PRESSED, to fire the transition
+        // below.
+        g_start_state = START_ARMED;
     }
 
     // Pause arms on its own buttons only, so holding fire never blocks it.
@@ -88,12 +95,12 @@ game_transition_t game_state_handle_buttons(bool start_pressed, bool pause_press
     // (released) frame counts.
     if (game_state_start_ready()) {
         if (start_pressed) {
-            if (g_start_armed) {
-                g_start_down = true;
+            if (g_start_state == START_ARMED) {
+                g_start_state = START_PRESSED;
             }
             return GAME_TRANSITION_NONE;
         }
-        if (!g_start_down) {
+        if (g_start_state != START_PRESSED) {
             return GAME_TRANSITION_NONE;
         }
         disarm_buttons();

@@ -14,12 +14,6 @@
 #define KEYBOARD_STATE_BITS ((1 << KEYBOARD_NO_KEY) | (1 << KEYBOARD_NUM_LOCK) | \
                              (1 << KEYBOARD_CAPS_LOCK) | (1 << KEYBOARD_SCROLL_LOCK))
 
-typedef struct {
-    uint8_t action_id;
-    uint8_t field;
-    uint8_t mask;
-} JoystickMapping;
-
 // A mask tested against one field of a gamepad's state. A zero mask is unbound.
 typedef struct {
     uint8_t field;
@@ -48,7 +42,7 @@ static const uint8_t up_keys[]    = {KEY_W, KEY_UP,    KEY_KP8, KEY_KP7, KEY_KP9
 static const uint8_t down_keys[]  = {KEY_S, KEY_DOWN,  KEY_KP2, KEY_KP1, KEY_KP3};
 static const uint8_t left_keys[]  = {KEY_A, KEY_LEFT,  KEY_KP4, KEY_KP7, KEY_KP1};
 static const uint8_t right_keys[] = {KEY_D, KEY_RIGHT, KEY_KP6, KEY_KP9, KEY_KP3};
-static const uint8_t pause_keys[] = {KEY_P, KEY_PAUSE};
+static const uint8_t pause_keys[] = {KEY_P, KEY_PAUSE, KEY_ENTER};
 
 // Keyboard state, copied from XRAM each frame
 static keyboard_t keyboard;
@@ -159,34 +153,34 @@ void handle_input(void)
     }
 
     if (!KEYBOARD_PRESSED(keyboard.keys, KEYBOARD_NO_KEY)) {
-        bool any_key = (keyboard.keys[0] & (uint8_t)~KEYBOARD_STATE_BITS) != 0;
         bool fire_key = false;
         for (uint8_t i = 0; i < sizeof(keyboard.keys); i++) {
-            if (i != 0 && keyboard.keys[i] != 0) {
-                any_key = true;
-            }
             if (keyboard.keys[i] & fire_keys[i]) {
                 fire_key = true;
             }
         }
 
-        set_action(ACTION_MOVE_UP, any_key_pressed(up_keys, sizeof(up_keys)));
-        set_action(ACTION_MOVE_DOWN, any_key_pressed(down_keys, sizeof(down_keys)));
-        set_action(ACTION_MOVE_LEFT, any_key_pressed(left_keys, sizeof(left_keys)));
-        set_action(ACTION_MOVE_RIGHT, any_key_pressed(right_keys, sizeof(right_keys)));
+        bool move_up = any_key_pressed(up_keys, sizeof(up_keys));
+        bool move_down = any_key_pressed(down_keys, sizeof(down_keys));
+        bool move_left = any_key_pressed(left_keys, sizeof(left_keys));
+        bool move_right = any_key_pressed(right_keys, sizeof(right_keys));
+        bool pause_key = any_key_pressed(pause_keys, sizeof(pause_keys));
+
+        set_action(ACTION_MOVE_UP, move_up);
+        set_action(ACTION_MOVE_DOWN, move_down);
+        set_action(ACTION_MOVE_LEFT, move_left);
+        set_action(ACTION_MOVE_RIGHT, move_right);
         set_action(ACTION_FIRE, fire_key);
-        set_action(ACTION_PAUSE, any_key_pressed(pause_keys, sizeof(pause_keys)));
-        set_action(ACTION_START, any_key);
+        set_action(ACTION_PAUSE, pause_key);
+        // Any key that fires, moves or pauses also counts as a START press;
+        // this covers every key but the state bits, without a second scan.
+        set_action(ACTION_START, fire_key || move_up || move_down || move_left || move_right || pause_key);
     }
 
     // Read the first gamepad's digital state: dpad, sticks, btn0, btn1,
     // indexed by GP_FIELD_*.
     uint8_t pad[4];
-    RIA.addr0 = XRAM_GAMEPAD;
-    RIA.step0 = 1;
-    for (uint8_t i = 0; i < sizeof(pad); i++) {
-        pad[i] = RIA.rw0;
-    }
+    gamepad_read_raw(pad);
 
     if (pad[GP_FIELD_DPAD] & GAMEPAD_FEAT_CONNECTED) {
         pad[GP_FIELD_DPAD] &= GP_DPAD_MASK;
