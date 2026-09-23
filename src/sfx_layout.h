@@ -5,9 +5,9 @@
 // command streams -- do not edit by hand, regenerate instead:
 //   python3 tools/generate_sfx.py
 //
-// Byte offsets into the SFX_DATA XRAM region (constants.h) of each
+// Byte offsets into the XRAM_SFX_DATA region (src/xram.h) of each
 // clip's command stream. src/sfx.h's SFX_*_ADDR macros add these
-// to SFX_DATA to get the absolute XRAM address
+// to XRAM_SFX_DATA to get the absolute XRAM address
 // sfx_play_player()/sfx_play_enemy() take.
 #define SFX_PLYRFIRE_OFFSET 0
 #define SFX_PLYRFIRE_LEN    115

@@ -4,11 +4,6 @@
 #include "player_controller.h"
 #include "sprite_mode5.h"
 
-// Store the player config address for updates
-unsigned PLAYER_CONFIG;
-unsigned PROJECTILE_CONFIG;
-unsigned ENEMY_CONFIG;
-
 static uint8_t player_frame = 0;
 static uint8_t engine_phase = 0;
 static uint8_t engine_tick = 0;
@@ -20,19 +15,19 @@ static uint16_t boss_weakspot_current_color = 0;
 #define PLAYER_ENGINE_PALETTE_INDEX 12
 #define ENGINE_ANIM_TICK_FRAMES 4
 #define BOSS_WEAKSPOT_PALETTE_INDEX 6
-#define BOSS_WEAKSPOT_FIGHT_COLOR 0x57FF
-#define BOSS_WEAKSPOT_FLASH_RED 0x003F
+#define BOSS_WEAKSPOT_FIGHT_COLOR (COLOR_FROM_RGB5(31, 31, 10) | COLOR_ALPHA_MASK)
+#define BOSS_WEAKSPOT_FLASH_RED (COLOR_FROM_RGB5(31, 0, 0) | COLOR_ALPHA_MASK)
 #define BOSS_WEAKSPOT_FLASH_TOGGLE_FRAMES 3
 
 static const uint16_t engine_colors[3] = {
-    0x52BF,
-    0x57FF,
-    0xFFFF,
+    COLOR_FROM_RGB5(31, 10, 10) | COLOR_ALPHA_MASK,
+    COLOR_FROM_RGB5(31, 31, 10) | COLOR_ALPHA_MASK,
+    COLOR_FROM_RGB5(31, 31, 31) | COLOR_ALPHA_MASK,
 };
 
 static void sprite_mode5_write_palette_entry(uint8_t index, uint16_t color)
 {
-    RIA.addr0 = (unsigned)(PLAYER_PALETTE_ADDR + ((unsigned)index * 2u));
+    RIA.addr0 = (unsigned)(XRAM_PLAYER_PALETTE + ((unsigned)index * sizeof(uint16_t)));
     RIA.step0 = 1;
     RIA.rw0 = color & 0xFF;
     RIA.rw0 = color >> 8;
@@ -40,7 +35,7 @@ static void sprite_mode5_write_palette_entry(uint8_t index, uint16_t color)
 
 static void sprite_mode5_write_enemy_palette_entry(uint8_t index, uint16_t color)
 {
-    RIA.addr0 = (unsigned)(ENEMY_PALETTE_ADDR + ((unsigned)index * 2u));
+    RIA.addr0 = (unsigned)(XRAM_ENEMY_PALETTE + ((unsigned)index * sizeof(uint16_t)));
     RIA.step0 = 1;
     RIA.rw0 = color & 0xFF;
     RIA.rw0 = color >> 8;
@@ -51,24 +46,22 @@ void sprite_mode5_init(void) {
     int16_t center_x = (int16_t)((SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX) / 2);
     int16_t center_y = (int16_t)((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) * 2 / 3); // Start slightly lower than center for better composition
 
-    PLAYER_CONFIG = SPRITE_DATA_END; // Just after the end of sprite data
-
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, x_pos_px, center_x);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, y_pos_px, center_y);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, xram_sprite_ptr, PLAYER_DATA);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, palette_ptr, PLAYER_PALETTE_ADDR);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, x_pos_px, center_x);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, y_pos_px, center_y);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, xram_sprite_ptr, XRAM_PLAYER_DATA);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, palette_ptr, XRAM_PLAYER_PALETTE);
     player_frame = 0;
 
 
-    // Mode 5 args: MODE, OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
-    if (xreg_vga_mode(5, 0x0A, PLAYER_CONFIG, 1, 2, 0, 0) < 0) {
+    // Mode 5 args: OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
+    if (xreg_vga_mode5(MODE5_4BPP | MODE5_16X16, XRAM_PLAYER_CONFIG, 1, 2, 0, 0) < 0) {
         return;
     }
 
 
-    RIA.addr0 = PLAYER_PALETTE_ADDR;
+    RIA.addr0 = XRAM_PLAYER_PALETTE;
     RIA.step0 = 1;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < (int)(sizeof(player_palette) / sizeof(player_palette[0])); i++) {
         RIA.rw0 = player_palette[i] & 0xFF;
         RIA.rw0 = player_palette[i] >> 8;
     }
@@ -77,51 +70,46 @@ void sprite_mode5_init(void) {
 }
 
 void sprite_mode5_init_projectiles(void) {
-    PROJECTILE_CONFIG = TILE_HUD_CONFIG + sizeof(vga_mode2_config_t); // Just after tile HUD config
-
     for (uint8_t i = 0; i < MAX_PROJECTILES; i++) {
 
-        unsigned ptr = PROJECTILE_CONFIG + (i * sizeof(vga_mode5_sprite_t));
+        unsigned ptr = XRAM_PROJECTILE_CONFIG + (i * sizeof(mode5_sprite_t));
 
-        xram0_struct_set(ptr, vga_mode5_sprite_t, x_pos_px, -32); // Start off-screen
-        xram0_struct_set(ptr, vga_mode5_sprite_t, y_pos_px, -32);
-        xram0_struct_set(ptr, vga_mode5_sprite_t, xram_sprite_ptr, PROJECTILE_DATA);
-        xram0_struct_set(ptr, vga_mode5_sprite_t, palette_ptr, PROJECTILE_PALETTE_ADDR);
+        xram0_struct_set(ptr, mode5_sprite_t, x_pos_px, -32); // Start off-screen
+        xram0_struct_set(ptr, mode5_sprite_t, y_pos_px, -32);
+        xram0_struct_set(ptr, mode5_sprite_t, xram_sprite_ptr, XRAM_PROJECTILE_DATA);
+        xram0_struct_set(ptr, mode5_sprite_t, palette_ptr, XRAM_PROJECTILE_PALETTE);
     }
 
-    // Mode 5 args: MODE, OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
-    if (xreg_vga_mode(5, 0x02, PROJECTILE_CONFIG, MAX_PROJECTILES, 0, 24, 0) < 0) {
+    // Mode 5 args: OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
+    if (xreg_vga_mode5(MODE5_4BPP | MODE5_8X8, XRAM_PROJECTILE_CONFIG, MAX_PROJECTILES, 0, HUD_TOP_PX, 0) < 0) {
         return;
     }
 
-    RIA.addr0 = PROJECTILE_PALETTE_ADDR;
+    RIA.addr0 = XRAM_PROJECTILE_PALETTE;
     RIA.step0 = 1;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < (int)(sizeof(projectiles_palette) / sizeof(projectiles_palette[0])); i++) {
         RIA.rw0 = projectiles_palette[i] & 0xFF;
         RIA.rw0 = projectiles_palette[i] >> 8;
     }
 }
 
 void sprite_mode5_init_enemies(void) {
-    ENEMY_CONFIG = PROJECTILE_CONFIG + (MAX_PROJECTILES * sizeof(vga_mode5_sprite_t));
-
     for (uint8_t i = 0; i < MAX_ENEMIES; i++) {
-        unsigned ptr = ENEMY_CONFIG + ((unsigned)i * sizeof(vga_mode5_sprite_t));
-        xram0_struct_set(ptr, vga_mode5_sprite_t, x_pos_px, -32);
-        xram0_struct_set(ptr, vga_mode5_sprite_t, y_pos_px, -32);
-        xram0_struct_set(ptr, vga_mode5_sprite_t, xram_sprite_ptr, ENEMY_DATA);
-        xram0_struct_set(ptr, vga_mode5_sprite_t, palette_ptr, ENEMY_PALETTE_ADDR);
+        unsigned ptr = XRAM_ENEMY_CONFIG + ((unsigned)i * sizeof(mode5_sprite_t));
+        xram0_struct_set(ptr, mode5_sprite_t, x_pos_px, -32);
+        xram0_struct_set(ptr, mode5_sprite_t, y_pos_px, -32);
+        xram0_struct_set(ptr, mode5_sprite_t, xram_sprite_ptr, XRAM_ENEMY_DATA);
+        xram0_struct_set(ptr, mode5_sprite_t, palette_ptr, XRAM_ENEMY_PALETTE);
     }
 
-    // Mode 5 args: MODE, OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
-    // OPTIONS 0x0A = 16x16 sprites, 4bpp
-    if (xreg_vga_mode(5, 0x0A, ENEMY_CONFIG, MAX_ENEMIES, 1, 24, 0) < 0) {
+    // Mode 5 args: OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
+    if (xreg_vga_mode5(MODE5_4BPP | MODE5_16X16, XRAM_ENEMY_CONFIG, MAX_ENEMIES, 1, HUD_TOP_PX, 0) < 0) {
         return;
     }
 
-    RIA.addr0 = ENEMY_PALETTE_ADDR;
+    RIA.addr0 = XRAM_ENEMY_PALETTE;
     RIA.step0 = 1;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < (int)(sizeof(enemy_palette) / sizeof(enemy_palette[0])); i++) {
         RIA.rw0 = enemy_palette[i] & 0xFF;
         RIA.rw0 = enemy_palette[i] >> 8;
     }
@@ -133,23 +121,23 @@ void sprite_mode5_init_enemies(void) {
 
 void sprite_mode5_set_enemy(uint8_t slot, int16_t x, int16_t y, uint8_t type)
 {
-    unsigned ptr = ENEMY_CONFIG + ((unsigned)slot * sizeof(vga_mode5_sprite_t));
-    xram0_struct_set(ptr, vga_mode5_sprite_t, x_pos_px, x);
-    xram0_struct_set(ptr, vga_mode5_sprite_t, y_pos_px, y);
-    xram0_struct_set(ptr, vga_mode5_sprite_t, xram_sprite_ptr,
-        (ENEMY_DATA + ((unsigned)type * ENEMY_FRAME_SIZE)));
+    unsigned ptr = XRAM_ENEMY_CONFIG + ((unsigned)slot * sizeof(mode5_sprite_t));
+    xram0_struct_set(ptr, mode5_sprite_t, x_pos_px, x);
+    xram0_struct_set(ptr, mode5_sprite_t, y_pos_px, y);
+    xram0_struct_set(ptr, mode5_sprite_t, xram_sprite_ptr,
+        (XRAM_ENEMY_DATA + ((unsigned)type * ENEMY_FRAME_SIZE)));
 }
 
 void sprite_mode5_set_projectile_position(uint8_t slot, int16_t x, int16_t y)
 {
-    unsigned ptr = PROJECTILE_CONFIG + ((unsigned)slot * sizeof(vga_mode5_sprite_t));
-    xram0_struct_set(ptr, vga_mode5_sprite_t, x_pos_px, x);
-    xram0_struct_set(ptr, vga_mode5_sprite_t, y_pos_px, y);
+    unsigned ptr = XRAM_PROJECTILE_CONFIG + ((unsigned)slot * sizeof(mode5_sprite_t));
+    xram0_struct_set(ptr, mode5_sprite_t, x_pos_px, x);
+    xram0_struct_set(ptr, mode5_sprite_t, y_pos_px, y);
 }
 
 void sprite_mode5_set_projectile_frame(uint8_t slot, uint8_t frame_index)
 {
-    unsigned ptr = PROJECTILE_CONFIG + ((unsigned)slot * sizeof(vga_mode5_sprite_t));
+    unsigned ptr = XRAM_PROJECTILE_CONFIG + ((unsigned)slot * sizeof(mode5_sprite_t));
 
     if (frame_index >= PROJECTILE_FRAME_COUNT) {
         frame_index = 0;
@@ -157,9 +145,9 @@ void sprite_mode5_set_projectile_frame(uint8_t slot, uint8_t frame_index)
 
     xram0_struct_set(
         ptr,
-        vga_mode5_sprite_t,
+        mode5_sprite_t,
         xram_sprite_ptr,
-        (PROJECTILE_DATA + ((unsigned)frame_index * PROJECTILE_FRAME_SIZE))
+        (XRAM_PROJECTILE_DATA + ((unsigned)frame_index * PROJECTILE_FRAME_SIZE))
     );
 }
 
@@ -182,8 +170,8 @@ void sprite_mode5_set_position(int16_t x, int16_t y)
     }
     
     // Update sprite position in XRAM
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, x_pos_px, x);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, y_pos_px, y);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, x_pos_px, x);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, y_pos_px, y);
 }
 
 void sprite_mode5_set_frame(uint8_t frame_index)
@@ -197,10 +185,10 @@ void sprite_mode5_set_frame(uint8_t frame_index)
 
     player_frame = frame_index;
     xram0_struct_set(
-        PLAYER_CONFIG,
-        vga_mode5_sprite_t,
+        XRAM_PLAYER_CONFIG,
+        mode5_sprite_t,
         xram_sprite_ptr,
-        (PLAYER_DATA + ((unsigned)frame_index * PLAYER_FRAME_SIZE))
+        (XRAM_PLAYER_DATA + ((unsigned)frame_index * PLAYER_FRAME_SIZE))
     );
 }
 
@@ -251,16 +239,16 @@ void sprite_mode5_show_boss(int16_t x, int16_t y, uint8_t frame_set_base)
 void sprite_mode5_hide_boss(void)
 {
     for (uint8_t i = 0; i < BOSS_SPRITE_COUNT; ++i) {
-        unsigned ptr = ENEMY_CONFIG + ((unsigned)(BOSS_SPRITE_SLOT_FIRST + i) * sizeof(vga_mode5_sprite_t));
-        xram0_struct_set(ptr, vga_mode5_sprite_t, x_pos_px, -32);
-        xram0_struct_set(ptr, vga_mode5_sprite_t, y_pos_px, -32);
+        unsigned ptr = XRAM_ENEMY_CONFIG + ((unsigned)(BOSS_SPRITE_SLOT_FIRST + i) * sizeof(mode5_sprite_t));
+        xram0_struct_set(ptr, mode5_sprite_t, x_pos_px, -32);
+        xram0_struct_set(ptr, mode5_sprite_t, y_pos_px, -32);
     }
 }
 
 void sprite_mode5_hide_player(void)
 {
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, x_pos_px, -32);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, y_pos_px, -32);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, x_pos_px, -32);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, y_pos_px, -32);
 }
 
 void sprite_mode5_show_player(void)

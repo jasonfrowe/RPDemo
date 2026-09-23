@@ -7,7 +7,7 @@
 #include "opl.h"
 #include "player_controller.h"
 
-// Every SFX clip lives preloaded in XRAM at SFX_DATA (constants.h), baked
+// Every SFX clip lives preloaded in XRAM at XRAM_SFX_DATA (xram.h), baked
 // into the ROM image at build time exactly like the sprite/tile bitmaps
 // beside it (see CMakeLists.txt's XRAM Assets section) -- not opened as a
 // ROM: file the way music streams are. That matters specifically for SFX:

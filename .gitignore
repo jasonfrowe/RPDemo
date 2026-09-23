@@ -2,6 +2,8 @@ __pycache__
 /.rp6502
 /build
 CMakeUserPresets.json
+/tools/rp6502-emu
+/tools/rp6502-emu.*
 .venv
 .DS_Store
 .vscode/c_cpp_properties.json

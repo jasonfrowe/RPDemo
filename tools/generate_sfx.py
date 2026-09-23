@@ -419,8 +419,8 @@ def write_xram_bundle() -> None:
     and writes src/sfx_layout.h with each one's byte offset into it.
 
     This is what actually ships in the game: CMakeLists.txt loads this
-    blob straight into XRAM at a fixed address (SFX_DATA, constants.h) as
-    part of the ROM image, the same way it already does for sprite/tile
+    blob straight into XRAM at XRAM_SFX_DATA (the sfx_data member of
+    src/xram.h's layout, read by rp6502_map()) as part of the ROM image, the same way it already does for sprite/tile
     bitmap data -- so sfx.c plays a clip directly out of XRAM instead of
     open()-ing a ROM: file on every single trigger (see sfx.c's module
     docstring for why that mattered: the RP6502 ROM: filesystem does a
@@ -439,9 +439,9 @@ def write_xram_bundle() -> None:
         "// command streams -- do not edit by hand, regenerate instead:",
         "//   python3 tools/generate_sfx.py",
         "//",
-        "// Byte offsets into the SFX_DATA XRAM region (constants.h) of each",
+        "// Byte offsets into the XRAM_SFX_DATA region (src/xram.h) of each",
         "// clip's command stream. src/sfx.h's SFX_*_ADDR macros add these",
-        "// to SFX_DATA to get the absolute XRAM address",
+        "// to XRAM_SFX_DATA to get the absolute XRAM address",
         "// sfx_play_player()/sfx_play_enemy() take.",
     ]
     blob = bytearray()
@@ -453,20 +453,16 @@ def write_xram_bundle() -> None:
         blob += data
         offset += len(data)
 
-    # SFX_DATA_SIZE (constants.h) determines where SPRITE_DATA_END --
-    # and every runtime sprite/tile config chained after it
-    # (PLAYER_CONFIG, TILE_*_CONFIG, ...) -- lands in XRAM. Those configs'
-    # fields are all 16-bit (int/unsigned, see rp6502.h's vga_mode2/5
-    # struct typedefs), and xram0_struct_set()'s underlying RIA register
-    # writes need that base address to be even, or every field after the
-    # first is written one byte off from where the video hardware expects
-    # it -- total, silent corruption of sprite positions and tilemaps
-    # game-wide, not just of SFX playback. One clip landing at an odd
-    # length (this bundle's is whatever the sum of all clips' individual
-    # byte counts happens to be, not something authored) is enough to
-    # trip this, so pad the whole bundle to an even size here rather than
-    # requiring every clip to stay individually even. The pad byte sits
-    # past every clip's own 0x66 end marker, so no reader ever reaches it.
+    # SFX_DATA_SIZE sizes the sfx_data member of src/xram.h's
+    # xram_layout_t. sfx_data is the layout's last member today, but
+    # anything placed after it -- mode configs and palettes above all --
+    # must sit at an even XRAM address, and rp6502_map() fails the build
+    # on any odd XRAM_* address. One clip landing at an odd length (this
+    # bundle's is whatever the sum of all clips' individual byte counts
+    # happens to be, not something authored) is enough to trip that, so
+    # pad the whole bundle to an even size here rather than requiring
+    # every clip to stay individually even. The pad byte sits past every
+    # clip's own 0x66 end marker, so no reader ever reaches it.
     if offset % 2 != 0:
         blob += bytes([0x00])
         offset += 1

@@ -3,14 +3,10 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include "constants.h"
+#include "xram.h"
 #include "tile_mode2.h"
 #include "sprite_mode5.h"
 
-
-unsigned TILE_BG_CONFIG;
-unsigned TILE_FG_CONFIG;
-unsigned TILE_HUD_CONFIG;
 
 static int16_t bg_scroll_y_half = 0;
 static int16_t fg_scroll_y_half = 0;
@@ -22,7 +18,7 @@ static bool gameplay_transition_active = false;
 static bool transition_to_gameplay = false;
 static bool warp_tiles_replaced = false;
 static bool warp_tile_backup_valid = false;
-static uint8_t warp_tile_backup[5][32];
+static uint8_t warp_tile_backup[5][sizeof(tile_8x8_t)];
 static uint16_t current_health_palette_color = 0;
 static uint8_t health_flash_tick = 0;
 static uint8_t lives_flash_slot = 0;
@@ -54,7 +50,7 @@ static uint8_t lives_flash_tick = 0;
 #define PAUSED_TEXT "PAUSED"
 #define PAUSED_TEXT_X 17
 #define PAUSED_TEXT_Y 14
-#define HUD_TEXT_YELLOW 0x57FF
+#define HUD_TEXT_YELLOW (COLOR_FROM_RGB5(31, 31, 10) | COLOR_ALPHA_MASK)
 #define LEVEL_TEXT_X 16
 #define LEVEL_TEXT_Y 14
 #define LEVEL_TEXT_LEN 8
@@ -92,14 +88,6 @@ static uint8_t lives_flash_tick = 0;
 #define BONUS_TOTAL_Y (BONUS_TABLE_Y + 18)
 #define BONUS_ICON_TILE_X BONUS_TABLE_X
 
-#ifndef COLOR_FROM_RGB8
-#define COLOR_FROM_RGB8(r,g,b) (((b>>3)<<11)|((g>>3)<<6)|(r>>3))
-#endif
-
-#ifndef COLOR_ALPHA_MASK
-#define COLOR_ALPHA_MASK (1u<<5)
-#endif
-
 #define BOSS_HEALTH_TILE_FULL_INDEX 211
 #define BOSS_HEALTH_TILE_EMPTY_INDEX 219
 #define BOSS_LOW_HEALTH_THRESHOLD (BOSS_MAX_HEALTH / 3)
@@ -125,7 +113,7 @@ static const uint16_t boss_health_low_color = COLOR_FROM_RGB8(255, 32, 32) | COL
 
 static void tile_mode2_write_hud_palette_entry(uint8_t index, uint16_t color)
 {
-    RIA.addr0 = TILE_HUD_PALETTE_ADDR + ((unsigned)index * 2u);
+    RIA.addr0 = XRAM_TILE_HUD_PALETTE + ((unsigned)index * sizeof(uint16_t));
     RIA.step0 = 1;
     RIA.rw0 = color & 0xFF;
     RIA.rw0 = color >> 8;
@@ -142,7 +130,7 @@ static void tile_mode2_clear_hud_text(uint8_t x, uint8_t y, uint8_t len)
 {
     for (uint8_t i = 0; i < len; ++i) {
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(x + i),
             y,
@@ -163,8 +151,8 @@ static void tile_mode2_write_two_digits(uint8_t x, uint8_t y, uint16_t value)
     tens = (uint8_t)(value / 10u);
     ones = (uint8_t)(value % 10u);
 
-    tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, (uint8_t)(SCORE_TILE_INDEX_BASE + tens));
-    tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 1), y, (uint8_t)(SCORE_TILE_INDEX_BASE + ones));
+    tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, (uint8_t)(SCORE_TILE_INDEX_BASE + tens));
+    tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 1), y, (uint8_t)(SCORE_TILE_INDEX_BASE + ones));
 }
 
     static void tile_mode2_write_three_digits(uint8_t x, uint8_t y, uint16_t value)
@@ -181,9 +169,9 @@ static void tile_mode2_write_two_digits(uint8_t x, uint8_t y, uint16_t value)
         tens = (uint8_t)((value % 100u) / 10u);
         ones = (uint8_t)(value % 10u);
 
-        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, (uint8_t)(SCORE_TILE_INDEX_BASE + hundreds));
-        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 1), y, (uint8_t)(SCORE_TILE_INDEX_BASE + tens));
-        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 2), y, (uint8_t)(SCORE_TILE_INDEX_BASE + ones));
+        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, (uint8_t)(SCORE_TILE_INDEX_BASE + hundreds));
+        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 1), y, (uint8_t)(SCORE_TILE_INDEX_BASE + tens));
+        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 2), y, (uint8_t)(SCORE_TILE_INDEX_BASE + ones));
     }
 
 static void tile_mode2_write_five_digits(uint8_t x, uint8_t y, uint32_t value)
@@ -198,7 +186,7 @@ static void tile_mode2_write_five_digits(uint8_t x, uint8_t y, uint32_t value)
         uint8_t digit = (uint8_t)(value / divisor);
         value = value % divisor;
         divisor /= 10u;
-        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, (uint8_t)(SCORE_TILE_INDEX_BASE + digit));
+        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, (uint8_t)(SCORE_TILE_INDEX_BASE + digit));
     }
 }
 
@@ -211,7 +199,7 @@ static void tile_mode2_clear_bonus_table_area(void)
 {
     for (uint8_t y = BONUS_TABLE_Y; y < (BONUS_TABLE_Y + BONUS_TABLE_ROWS); ++y) {
         for (uint8_t x = BONUS_TABLE_X; x < (BONUS_TABLE_X + BONUS_TABLE_WIDTH); ++x) {
-            tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, 0);
+            tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, 0);
         }
     }
 }
@@ -220,16 +208,16 @@ static void tile_mode2_clear_title_banner(void)
 {
     for (uint8_t y = 4; y <= 16; ++y) {
         for (uint8_t x = 8; x <= 32; ++x) {
-            tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, 0);
+            tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, 0);
         }
     }
 }
 
 static void tile_mode2_copy_tile_bitmap(uint8_t dst_index, uint8_t src_index)
 {
-    uint8_t tile_data[32];
-    unsigned src_addr = STARFIELD_TILES_DATA + ((unsigned)src_index * 32u);
-    unsigned dst_addr = STARFIELD_TILES_DATA + ((unsigned)dst_index * 32u);
+    uint8_t tile_data[sizeof(tile_8x8_t)];
+    unsigned src_addr = XRAM_STARFIELD_TILES_DATA + ((unsigned)src_index * sizeof(tile_8x8_t));
+    unsigned dst_addr = XRAM_STARFIELD_TILES_DATA + ((unsigned)dst_index * sizeof(tile_8x8_t));
 
     RIA.addr0 = src_addr;
     RIA.step0 = 1;
@@ -247,11 +235,11 @@ static void tile_mode2_copy_tile_bitmap(uint8_t dst_index, uint8_t src_index)
 static void tile_mode2_backup_warp_tiles(void)
 {
     for (uint8_t t = 0; t < 5; ++t) {
-        unsigned src_addr = STARFIELD_TILES_DATA + ((unsigned)(6 + t) * 32u);
+        unsigned src_addr = XRAM_STARFIELD_TILES_DATA + ((unsigned)(6 + t) * sizeof(tile_8x8_t));
 
         RIA.addr0 = src_addr;
         RIA.step0 = 1;
-        for (uint8_t i = 0; i < 32; ++i) {
+        for (uint8_t i = 0; i < sizeof(tile_8x8_t); ++i) {
             warp_tile_backup[t][i] = RIA.rw0;
         }
     }
@@ -265,11 +253,11 @@ static void tile_mode2_restore_warp_tiles(void)
     }
 
     for (uint8_t t = 0; t < 5; ++t) {
-        unsigned dst_addr = STARFIELD_TILES_DATA + ((unsigned)(6 + t) * 32u);
+        unsigned dst_addr = XRAM_STARFIELD_TILES_DATA + ((unsigned)(6 + t) * sizeof(tile_8x8_t));
 
         RIA.addr0 = dst_addr;
         RIA.step0 = 1;
-        for (uint8_t i = 0; i < 32; ++i) {
+        for (uint8_t i = 0; i < sizeof(tile_8x8_t); ++i) {
             RIA.rw0 = warp_tile_backup[t][i];
         }
     }
@@ -302,84 +290,75 @@ void tile_mode2_init(void) {
     title_palette_tick = 0;
     title_palette_phase = 0;
 
-    TILE_BG_CONFIG = PLAYER_CONFIG + sizeof(vga_mode5_sprite_t); // Add after sprite config
-
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, x_wrap, true);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, y_wrap, true);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, x_pos_px, 0);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, y_pos_px, 0);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, width_tiles,  STARFIELD_BG_WIDTH);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, height_tiles, STARFIELD_BG_HEIGHT);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, xram_data_ptr,    STARFIELD_BG_DATA); // tile ID grid
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, xram_palette_ptr, TILE_BG_PALETTE_ADDR);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, xram_tile_ptr,    STARFIELD_TILES_DATA);        // tile bitmaps
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, x_wrap, true);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, y_wrap, true);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, x_pos_px, 0);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, y_pos_px, 0);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, width_tiles,  STARFIELD_BG_WIDTH);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, height_tiles, STARFIELD_BG_HEIGHT);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_data_ptr,    XRAM_STARFIELD_BG_DATA); // tile ID grid
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_palette_ptr, XRAM_TILE_BG_PALETTE);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_tile_ptr,    XRAM_STARFIELD_TILES_DATA);        // tile bitmaps
 
 
-    // Mode 2 args: MODE, OPTIONS, CONFIG, PLANE, BEGIN, END
-    // OPTIONS: bit3=0 (8x8 tiles), bit[2:0]=2 (8-bit color index) => 0b0010 = 2
-    // Plane 0 = background fill layer (behind sprite plane 1)
-    if (xreg_vga_mode(2, 0x02, TILE_BG_CONFIG, 0, 24, 0) < 0) {
+    // Mode 2 args: OPTIONS, CONFIG, PLANE, BEGIN, END
+    // Plane 0 = background fill layer, below the HUD rows
+    if (xreg_vga_mode2(MODE2_4BPP | MODE2_8X8, XRAM_TILE_BG_CONFIG, 0, HUD_TOP_PX, 0) < 0) {
         return;
     }
 
-    TILE_FG_CONFIG = TILE_BG_CONFIG + sizeof(vga_mode2_config_t); // Add after sprite config
-
-    xram0_struct_set(TILE_FG_CONFIG, vga_mode2_config_t, x_wrap, true);
-    xram0_struct_set(TILE_FG_CONFIG, vga_mode2_config_t, y_wrap, true);
-    xram0_struct_set(TILE_FG_CONFIG, vga_mode2_config_t, x_pos_px, 0);
-    xram0_struct_set(TILE_FG_CONFIG, vga_mode2_config_t, y_pos_px, 0);
-    xram0_struct_set(TILE_FG_CONFIG, vga_mode2_config_t, width_tiles,  STARFIELD_FG_WIDTH);
-    xram0_struct_set(TILE_FG_CONFIG, vga_mode2_config_t, height_tiles, STARFIELD_FG_HEIGHT);
-    xram0_struct_set(TILE_FG_CONFIG, vga_mode2_config_t, xram_data_ptr, STARFIELD_FG_DATA); // tile ID grid
-    xram0_struct_set(TILE_FG_CONFIG, vga_mode2_config_t, xram_palette_ptr, TILE_FG_PALETTE_ADDR);
-    xram0_struct_set(TILE_FG_CONFIG, vga_mode2_config_t, xram_tile_ptr,    STARFIELD_TILES_DATA);        // tile bitmaps
+    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, x_wrap, true);
+    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, y_wrap, true);
+    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, x_pos_px, 0);
+    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, y_pos_px, 0);
+    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, width_tiles,  STARFIELD_FG_WIDTH);
+    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, height_tiles, STARFIELD_FG_HEIGHT);
+    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, xram_data_ptr, XRAM_STARFIELD_FG_DATA); // tile ID grid
+    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, xram_palette_ptr, XRAM_TILE_FG_PALETTE);
+    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, xram_tile_ptr,    XRAM_STARFIELD_TILES_DATA);        // tile bitmaps
 
 
-    // Mode 2 args: MODE, OPTIONS, CONFIG, PLANE, BEGIN, END
-    // OPTIONS: bit3=0 (8x8 tiles), bit[2:0]=2 (8-bit color index) => 0b0010 = 2
-    // Plane 0 = background fill layer (behind sprite plane 1)
-    if (xreg_vga_mode(2, 0x02, TILE_FG_CONFIG, 1, 24, 0) < 0) {
+    // Mode 2 args: OPTIONS, CONFIG, PLANE, BEGIN, END
+    // Plane 1 = foreground fill layer, below the HUD rows
+    if (xreg_vga_mode2(MODE2_4BPP | MODE2_8X8, XRAM_TILE_FG_CONFIG, 1, HUD_TOP_PX, 0) < 0) {
         return;
     }
 
-    TILE_HUD_CONFIG = TILE_FG_CONFIG + sizeof(vga_mode2_config_t); // Add after sprite config
-
-    xram0_struct_set(TILE_HUD_CONFIG, vga_mode2_config_t, x_wrap, true);
-    xram0_struct_set(TILE_HUD_CONFIG, vga_mode2_config_t, y_wrap, true);
-    xram0_struct_set(TILE_HUD_CONFIG, vga_mode2_config_t, x_pos_px, 0);
-    xram0_struct_set(TILE_HUD_CONFIG, vga_mode2_config_t, y_pos_px, 0);
-    xram0_struct_set(TILE_HUD_CONFIG, vga_mode2_config_t, width_tiles,  STARFIELD_HUD_WIDTH);
-    xram0_struct_set(TILE_HUD_CONFIG, vga_mode2_config_t, height_tiles, STARFIELD_HUD_HEIGHT);
-    xram0_struct_set(TILE_HUD_CONFIG, vga_mode2_config_t, xram_data_ptr, STARFIELD_HUD_DATA); // tile ID grid
-    xram0_struct_set(TILE_HUD_CONFIG, vga_mode2_config_t, xram_palette_ptr, TILE_HUD_PALETTE_ADDR);
-    xram0_struct_set(TILE_HUD_CONFIG, vga_mode2_config_t, xram_tile_ptr,    STARFIELD_TILES_DATA);        // tile bitmaps
+    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, x_wrap, true);
+    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, y_wrap, true);
+    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, x_pos_px, 0);
+    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, y_pos_px, 0);
+    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, width_tiles,  STARFIELD_HUD_WIDTH);
+    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, height_tiles, STARFIELD_HUD_HEIGHT);
+    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, xram_data_ptr, XRAM_STARFIELD_HUD_DATA); // tile ID grid
+    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, xram_palette_ptr, XRAM_TILE_HUD_PALETTE);
+    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, xram_tile_ptr,    XRAM_STARFIELD_TILES_DATA);        // tile bitmaps
 
 
-    // Mode 2 args: MODE, OPTIONS, CONFIG, PLANE, BEGIN, END
-    // OPTIONS: bit3=0 (8x8 tiles), bit[2:0]=2 (8-bit color index) => 0b0010 = 2
-    // Plane 0 = background fill layer (behind sprite plane 1)
-    if (xreg_vga_mode(2, 0x02, TILE_HUD_CONFIG, 2, 0, 0) < 0) {
+    // Mode 2 args: OPTIONS, CONFIG, PLANE, BEGIN, END
+    // Plane 2 = HUD fill layer, full screen
+    if (xreg_vga_mode2(MODE2_4BPP | MODE2_8X8, XRAM_TILE_HUD_CONFIG, 2, 0, 0) < 0) {
         return;
     }
 
 
-    RIA.addr0 = TILE_BG_PALETTE_ADDR;
+    RIA.addr0 = XRAM_TILE_BG_PALETTE;
     RIA.step0 = 1;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < (int)(sizeof(tile_bg_palette) / sizeof(tile_bg_palette[0])); i++) {
         RIA.rw0 = tile_bg_palette[i] & 0xFF;
         RIA.rw0 = tile_bg_palette[i] >> 8;
     }
 
-    RIA.addr0 = TILE_FG_PALETTE_ADDR;
+    RIA.addr0 = XRAM_TILE_FG_PALETTE;
     RIA.step0 = 1;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < (int)(sizeof(tile_fg_palette) / sizeof(tile_fg_palette[0])); i++) {
         RIA.rw0 = tile_fg_palette[i] & 0xFF;
         RIA.rw0 = tile_fg_palette[i] >> 8;
     }
 
-    RIA.addr0 = TILE_HUD_PALETTE_ADDR;
+    RIA.addr0 = XRAM_TILE_HUD_PALETTE;
     RIA.step0 = 1;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < (int)(sizeof(tile_hud_palette) / sizeof(tile_hud_palette[0])); i++) {
         RIA.rw0 = tile_hud_palette[i] & 0xFF;
         RIA.rw0 = tile_hud_palette[i] >> 8;
     }
@@ -403,7 +382,7 @@ void tile_mode2_set_score(uint32_t score)
             uint8_t digit = (uint8_t)(score % 10u);
         score /= 10u;
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(SCORE_TILE_X + i),
             SCORE_TILE_Y,
@@ -433,7 +412,7 @@ void tile_mode2_set_hiscore(uint32_t score)
     // tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
     for (uint8_t t = 0; t < 8; ++t) {
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(HISCORE_TEXT_X + t),
             HISCORE_TEXT_Y,
@@ -445,7 +424,7 @@ void tile_mode2_set_hiscore(uint32_t score)
         uint8_t digit = (uint8_t)(score % 10u);
         score /= 10u;
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(HISCORE_VALUE_X + i),
             HISCORE_VALUE_Y,
@@ -464,14 +443,14 @@ void tile_mode2_set_multiplier(uint8_t multiplier)
     }
 
     tile_mode2_write_tile(
-        STARFIELD_HUD_DATA,
+        XRAM_STARFIELD_HUD_DATA,
         STARFIELD_HUD_WIDTH,
         MULTIPLIER_TILE_X,
         MULTIPLIER_TILE_Y,
         (uint8_t)(SCORE_TILE_INDEX_BASE + multiplier)
     );
     tile_mode2_write_tile(
-        STARFIELD_HUD_DATA,
+        XRAM_STARFIELD_HUD_DATA,
         STARFIELD_HUD_WIDTH,
         (uint8_t)(MULTIPLIER_TILE_X + 1u),
         MULTIPLIER_TILE_Y,
@@ -495,7 +474,7 @@ void tile_mode2_set_paused_banner(bool visible)
         tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
         for (uint8_t i = 0; i < paused_len; ++i) {
             tile_mode2_write_tile(
-                STARFIELD_HUD_DATA,
+                XRAM_STARFIELD_HUD_DATA,
                 STARFIELD_HUD_WIDTH,
                 (uint8_t)(PAUSED_TEXT_X + i),
                 PAUSED_TEXT_Y,
@@ -507,7 +486,7 @@ void tile_mode2_set_paused_banner(bool visible)
 
     for (uint8_t i = 0; i < paused_len; ++i) {
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(PAUSED_TEXT_X + i),
             PAUSED_TEXT_Y,
@@ -544,7 +523,7 @@ void tile_mode2_set_level_banner(uint8_t level, bool visible)
     tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
     for (uint8_t i = 0; i < LEVEL_TEXT_LEN; ++i) {
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(LEVEL_TEXT_X + i),
             LEVEL_TEXT_Y,
@@ -578,7 +557,7 @@ void tile_mode2_set_end_banner(bool victory)
 
     for (uint8_t i = 0; i < len; ++i) {
         uint8_t tile_index = you_win_tiles[i];
-        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, tile_index);
+        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, tile_index);
     }
 }
 
@@ -609,7 +588,7 @@ void tile_mode2_set_level_complete_banner(bool visible)
     tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
     for (uint8_t i = 0; i < LEVEL_COMPLETE_TEXT_LEN; ++i) {
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(LEVEL_COMPLETE_TEXT_X + i),
             LEVEL_COMPLETE_TEXT_Y,
@@ -644,7 +623,7 @@ void tile_mode2_set_level_failed_banner(bool visible)
 
     tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
     for (uint8_t i = 0; i < 12u; ++i) {
-        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, level_failed_tiles[i]);
+        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, level_failed_tiles[i]);
     }
 }
 
@@ -672,7 +651,7 @@ void tile_mode2_set_bonus_continue_prompt(bool visible)
     tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
     for (uint8_t i = 0; i < BONUS_CONTINUE_TEXT_LEN; ++i) {
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(BONUS_CONTINUE_TEXT_X + i),
             BONUS_CONTINUE_TEXT_Y,
@@ -705,7 +684,7 @@ void tile_mode2_set_push_start_prompt(bool visible)
 
     tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
     for (uint8_t i = 0; i < 10u; ++i) {
-        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, push_start_tiles[i]);
+        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, push_start_tiles[i]);
     }
 }
 
@@ -763,7 +742,7 @@ bool tile_mode2_restore_hud_from_rom(void)
         return false;
     }
 
-    RIA.addr0 = STARFIELD_HUD_DATA;
+    RIA.addr0 = XRAM_STARFIELD_HUD_DATA;
     RIA.step0 = 1;
     for (unsigned i = 0; i < STARFIELD_HUD_SIZE; ++i) {
         RIA.rw0 = hud_data[i];
@@ -804,7 +783,7 @@ void tile_mode2_set_health(uint8_t health)
 
         tile_index = (uint8_t)(HEALTH_BAR_TILE_EMPTY_INDEX - fill);
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(HEALTH_BAR_TILE_X + i),
             HEALTH_BAR_TILE_Y,
@@ -840,7 +819,7 @@ void tile_mode2_set_lives(uint8_t extra_lives)
     lives_flash_timer = 0;
 
     tile_mode2_write_tile(
-        STARFIELD_HUD_DATA,
+        XRAM_STARFIELD_HUD_DATA,
         STARFIELD_HUD_WIDTH,
         LIVES_SLOT_0_X,
         LIVES_SLOT_Y,
@@ -848,7 +827,7 @@ void tile_mode2_set_lives(uint8_t extra_lives)
     );
 
     tile_mode2_write_tile(
-        STARFIELD_HUD_DATA,
+        XRAM_STARFIELD_HUD_DATA,
         STARFIELD_HUD_WIDTH,
         LIVES_SLOT_1_X,
         LIVES_SLOT_Y,
@@ -856,7 +835,7 @@ void tile_mode2_set_lives(uint8_t extra_lives)
     );
 
     tile_mode2_write_tile(
-        STARFIELD_HUD_DATA,
+        XRAM_STARFIELD_HUD_DATA,
         STARFIELD_HUD_WIDTH,
         LIVES_SLOT_2_X,
         LIVES_SLOT_Y,
@@ -903,11 +882,11 @@ void tile_mode2_update_lives_fx(void)
         ? (uint8_t)((steady_tile == 0u) ? LIVES_ICON_TILE_INDEX : 0u)
         : steady_tile;
 
-    tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, slot_x, LIVES_SLOT_Y, tile_index);
+    tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, slot_x, LIVES_SLOT_Y, tile_index);
 
     if (lives_flash_timer == 0u) {
         // Land exactly on the steady state so we never get stuck mid-blink.
-        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, slot_x, LIVES_SLOT_Y, steady_tile);
+        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, slot_x, LIVES_SLOT_Y, steady_tile);
     }
 }
 
@@ -921,7 +900,7 @@ void tile_mode2_set_speed_pickups(uint8_t count)
 
     for (uint8_t i = 0; i < SPEED_PICKUP_MAX_DISPLAY; ++i) {
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(SPEED_PICKUP_X_START + i),
             SPEED_PICKUP_Y,
@@ -940,7 +919,7 @@ void tile_mode2_set_power_pickups(uint8_t count)
 
     for (uint8_t i = 0; i < POWER_PICKUP_MAX_DISPLAY; ++i) {
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(POWER_PICKUP_X_START + i),
             POWER_PICKUP_Y,
@@ -992,7 +971,7 @@ void tile_mode2_set_boss_hud_visible(bool visible)
     tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
     for (uint8_t i = 0; i < BOSS_LABEL_TEXT_LEN; ++i) {
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(BOSS_HUD_LABEL_X + i),
             BOSS_HUD_LABEL_Y,
@@ -1022,7 +1001,7 @@ void tile_mode2_set_boss_health(uint8_t health)
 
         tile_index = (uint8_t)(BOSS_HEALTH_TILE_EMPTY_INDEX - fill);
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(BOSS_HUD_HEALTH_X + i),
             BOSS_HUD_HEALTH_Y,
@@ -1046,9 +1025,9 @@ void tile_mode2_begin_level_bonus(uint8_t level, uint8_t multiplier)
     for (uint8_t type = 0; type < ENEMY_TYPE_COUNT; ++type) {
         uint8_t row_y = tile_mode2_bonus_row_y(type);
         tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 3), row_y, 0);
-        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 5), row_y, HUD_SYMBOL_X_TILE_INDEX);
+        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 5), row_y, HUD_SYMBOL_X_TILE_INDEX);
         tile_mode2_write_three_digits((uint8_t)(BONUS_TABLE_X + 6), row_y, 0);
-        tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 9), row_y, HUD_SYMBOL_EQUALS_TILE_INDEX);
+        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 9), row_y, HUD_SYMBOL_EQUALS_TILE_INDEX);
         tile_mode2_write_five_digits((uint8_t)(BONUS_TABLE_X + 10), row_y, 0);
     }
 
@@ -1068,9 +1047,9 @@ void tile_mode2_set_bonus_row(uint8_t enemy_type, uint16_t kills, uint16_t point
     row_y = tile_mode2_bonus_row_y(enemy_type);
 
     tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 3), row_y, kills);
-    tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 5), row_y, HUD_SYMBOL_X_TILE_INDEX);
+    tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 5), row_y, HUD_SYMBOL_X_TILE_INDEX);
     tile_mode2_write_three_digits((uint8_t)(BONUS_TABLE_X + 6), row_y, points_each);
-    tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 9), row_y, HUD_SYMBOL_EQUALS_TILE_INDEX);
+    tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 9), row_y, HUD_SYMBOL_EQUALS_TILE_INDEX);
     tile_mode2_write_five_digits((uint8_t)(BONUS_TABLE_X + 10), row_y, subtotal);
 }
 
@@ -1086,7 +1065,7 @@ void tile_mode2_set_bonus_boss_row(uint16_t boss_points)
     tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
     for (uint8_t i = 0; i < 4; ++i) {
         tile_mode2_write_tile(
-            STARFIELD_HUD_DATA,
+            XRAM_STARFIELD_HUD_DATA,
             STARFIELD_HUD_WIDTH,
             (uint8_t)(BONUS_TABLE_X + i),
             BONUS_BOSS_ROW_Y,
@@ -1094,7 +1073,7 @@ void tile_mode2_set_bonus_boss_row(uint16_t boss_points)
         );
     }
 
-    tile_mode2_write_tile(STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 4), BONUS_BOSS_ROW_Y, 0);
+    tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 4), BONUS_BOSS_ROW_Y, 0);
     tile_mode2_write_five_digits((uint8_t)(BONUS_TABLE_X + 10), BONUS_BOSS_ROW_Y, boss_points);
 }
 
@@ -1182,6 +1161,6 @@ void tile_mode2_update_scroll(void) {
         fg_scroll_y_half = (int16_t)(fg_scroll_y_half - TILE_SCROLL_WRAP_HALF_PX);
     }
 
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, y_pos_px, (int16_t)(bg_scroll_y_half / 2));
-    xram0_struct_set(TILE_FG_CONFIG, vga_mode2_config_t, y_pos_px, (int16_t)(fg_scroll_y_half / 2));
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, y_pos_px, (int16_t)(bg_scroll_y_half / 2));
+    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, y_pos_px, (int16_t)(fg_scroll_y_half / 2));
 }

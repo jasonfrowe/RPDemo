@@ -45,9 +45,12 @@ static uint8_t action_map[] = {
 
 typedef struct {
     uint8_t action_id;
-    uint8_t field;  // 0=dpad, 1=sticks, 2=btn0, 3=btn1
+    uint8_t field;  // GP_FIELD_DPAD, GP_FIELD_STICKS, GP_FIELD_BTN0 or GP_FIELD_BTN1
     uint8_t mask;
 } JoystickMapping;
+
+// The direction bits of the dpad byte, without its type, sticks and connected bits.
+#define DPAD_MASK (GAMEPAD_DPAD_UP | GAMEPAD_DPAD_DOWN | GAMEPAD_DPAD_LEFT | GAMEPAD_DPAD_RIGHT)
 
 static JoystickMapping mappings[ACTION_COUNT];
 static uint8_t num_mappings = 0;
@@ -59,9 +62,9 @@ static void wait_for_all_released(void)
         if (RIA.vsync == vsync_last) continue;
         vsync_last = RIA.vsync;
 
-        RIA.addr0 = GAMEPAD_INPUT;
+        RIA.addr0 = XRAM_GAMEPAD;
         RIA.step0 = 1;
-        uint8_t d  = RIA.rw0 & 0x0F;
+        uint8_t d  = RIA.rw0 & DPAD_MASK;
         uint8_t s  = RIA.rw0;
         uint8_t b0 = RIA.rw0;
         uint8_t b1 = RIA.rw0;
@@ -78,30 +81,30 @@ static bool wait_for_any_button(uint8_t* field, uint8_t* mask)
         if (RIA.vsync == vsync_last) continue;
         vsync_last = RIA.vsync;
 
-        RIA.addr0 = GAMEPAD_INPUT;
+        RIA.addr0 = XRAM_GAMEPAD;
         RIA.step0 = 1;
-        uint8_t d = RIA.rw0 & 0x0F;
+        uint8_t d = RIA.rw0 & DPAD_MASK;
         uint8_t s = RIA.rw0;
         uint8_t b0 = RIA.rw0;
         uint8_t b1 = RIA.rw0;
 
         if ((d & (uint8_t)~prev_dpad) != 0) {
-            *field = 0;
+            *field = GP_FIELD_DPAD;
             *mask = d & (uint8_t)~prev_dpad;
             return true;
         }
         if ((s & (uint8_t)~prev_sticks) != 0) {
-            *field = 1;
+            *field = GP_FIELD_STICKS;
             *mask = s & (uint8_t)~prev_sticks;
             return true;
         }
         if ((b0 & (uint8_t)~prev_btn0) != 0) {
-            *field = 2;
+            *field = GP_FIELD_BTN0;
             *mask = b0 & (uint8_t)~prev_btn0;
             return true;
         }
         if ((b1 & (uint8_t)~prev_btn1) != 0) {
-            *field = 3;
+            *field = GP_FIELD_BTN1;
             *mask = b1 & (uint8_t)~prev_btn1;
             return true;
         }
@@ -118,8 +121,8 @@ int main(void)
     printf("\f");
     printf("=== RPStarHopper Gamepad Mapper ===\n\n");
 
-    xregn(0, 0, 0, 1, KEYBOARD_INPUT);
-    xregn(0, 0, 2, 1, GAMEPAD_INPUT);
+    xreg_ria_keyboard(XRAM_KEYBOARD);
+    xreg_ria_gamepad(XRAM_GAMEPAD);
 
     printf("Press any button to begin...\n");
     uint8_t f, m;
@@ -137,17 +140,17 @@ int main(void)
         num_mappings++;
 
         while (true) {
-            RIA.addr0 = GAMEPAD_INPUT;
+            RIA.addr0 = XRAM_GAMEPAD;
             RIA.step0 = 1;
-            uint8_t d = RIA.rw0 & 0x0F;
+            uint8_t d = RIA.rw0 & DPAD_MASK;
             uint8_t s = RIA.rw0;
             uint8_t b0 = RIA.rw0;
             uint8_t b1 = RIA.rw0;
             bool held = false;
-            if (f == 0 && (d & m)) held = true;
-            if (f == 1 && (s & m)) held = true;
-            if (f == 2 && (b0 & m)) held = true;
-            if (f == 3 && (b1 & m)) held = true;
+            if (f == GP_FIELD_DPAD && (d & m)) held = true;
+            if (f == GP_FIELD_STICKS && (s & m)) held = true;
+            if (f == GP_FIELD_BTN0 && (b0 & m)) held = true;
+            if (f == GP_FIELD_BTN1 && (b1 & m)) held = true;
             if (!held) break;
         }
     }
