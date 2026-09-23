@@ -1,18 +1,21 @@
-# RP6502 Game Demo for the [Picocomputer 6502](https://github.com/picocomputer) using [LLVM-MOS-SDK](https://github.com/llvm-mos/llvm-mos-sdk)
+# RP6502 Game Demo for the [Picocomputer 6502](https://github.com/picocomputer) using the [RP6502 SDK](https://picocomputer.github.io/sdk.html) and [llvm-mos](https://github.com/llvm-mos/llvm-mos-sdk)
 
 ![TitleScreen](Screenshots/Star_Hopper_Final.gif)
 
 ## Star Hopper — How to Play
 
-Star Hopper is a vertical shoot-em-up for the Picocomputer (RP6502). Fight through 7 levels of enemy waves, defeat a boss at the end of each level, and survive to reach the YOU WIN screen.
+Star Hopper is a vertical shoot-em-up for the Picocomputer (RP6502). Fight through 7 levels of enemy waves, defeat a boss at the end of each level, and survive to reach the YOU WIN screen. Your ship stays parked there for the fireworks and the boss parade; any key or button returns to the title.
 
 ### Controls
 
-| Action | Gamepad |
-|---|---|
-| Move | D-Pad or Left Stick |
-| Fire | X |
-| Pause | Start |
+| Action | Keyboard | Gamepad |
+|---|---|---|
+| Move | W A S D, arrow keys, or keypad (7 9 1 3 move diagonally) | D-Pad or Left Stick |
+| Fire (hold for auto-fire) | Any other key | A, B, X or Y |
+| Pause / unpause | P or Pause | Start or Select |
+| Start / continue | Any key | A, B, X, Y, Start or Select |
+
+Holding fire on the bonus screen fast-forwards the tally.
 
 ### Enemies and Scoring
 
@@ -22,9 +25,9 @@ After clearing a level, a **bonus screen** tallies your kills per enemy type and
 
 ### Boss Fights
 
-Each level ends with a boss encounter.  Bosses have a vulerable that is bright yellow.  Shoot it to deal damage.  Some bosses will only be vunerable after certain conditions are met, which will be telegraphed visually.  For example, Boss Variant Four (Level 4) requires you to destroy all but one of the smaller enemies on screen before its vulnerable point will appear.
+Each level ends with a boss encounter.  Bosses have a vulnerable point that is bright yellow.  Shoot it to deal damage.  Some bosses will only be vulnerable after certain conditions are met, which will be telegraphed visually.  For example, Boss Variant Four (Level 4) requires you to destroy all but one of the smaller enemies on screen before its vulnerable point will appear.
 
-You have **4 minutes** to defeat the boss. If time runs out, the boss retreats and the level is marked **LEVEL FAILED**. Press Start to retry the same level.
+You have **4 minutes** to defeat the boss. If time runs out, the boss retreats and the level is marked **LEVEL FAILED**. Press any button to retry the same level.
 
 ### Asteroids and Power-Ups
 
@@ -34,14 +37,14 @@ Destroying asteroids can reveal power-up capsules. Pickups follow a fixed repeat
 |---|---|---|
 | **P** | Power | Increases fire rate (faster shots, down to a minimum cooldown) |
 | **E** | Energy | Restores 8 HP |
-| **S** | Speed | Raises your maximum movement speed |
+| **S** | Speed | Raises your movement speed |
 
 
 ### Health
 
-Your ship has 48 HP. The health bar at the top right turns red when HP drops below 12. You have a brief invincibility window after each hit. Reaching 0 HP triggers a game-over.
+Your ship has 48 HP. The health bar at the top center turns red when HP drops below 12. You have a brief invincibility window after each hit. Reaching 0 HP triggers a game-over.
 
-You get an extra life every 100 000 points. You them wisely. 
+You get an extra life every 100 000 points. Use them wisely. 
 
 ---
 
@@ -62,10 +65,11 @@ You get an extra life every 100 000 points. You them wisely.
 - [Adding Bullets](#adding-bullets)
 - [Gameplay Loop](#gameplay-loop)
 - [Enemies and Collision Detection](#enemies-and-collision-detection)
+- [Gameplay Flow and Level Transitions](#gameplay-flow-and-level-transitions)
 
 ## Introduction
 
-This is a complete shoot-em-up (**Star Hopper**) built for the Picocomputer (RP6502) using the LLVM-MOS C toolchain. The game was written incrementally, and this README follows the same steps — you can read the code and explanations side by side and build your own game the same way.
+This is a complete shoot-em-up (**Star Hopper**) built for the Picocomputer (RP6502) with the [RP6502 SDK](https://picocomputer.github.io/sdk.html) and the llvm-mos C compiler. The SDK's project template can build with cc65 or llvm-mos, but Star Hopper builds with the llvm-mos presets only. The game was written incrementally, and this README follows the same steps — you can read the code and explanations side by side and build your own game the same way.
 
 The Picocomputer is built around a real WDC 65C02 CPU. Programming it feels like classic 8-bit development, but the surrounding hardware — VGA, OPL2 audio, gamepads, WiFi — is all modern and fully open source. Before jumping into code, it helps to understand a few concepts that are unique to this platform.
 
@@ -75,11 +79,13 @@ Understanding these ideas first will make every later section much easier to fol
 
 ### System RAM and XRAM
 
-The 6502 sees its normal 64 KB of system RAM (`0x0000–0xFFFF`). This is where program code, the stack, and variables live. The RP6502 also has a second 64 KB called **Extended RAM (XRAM)**. XRAM is *not* directly addressable by the 6502 — there is no `LDA` or `STA` for it. Instead, the RIA chip provides two portals — `ADDR0/RW0` and `ADDR1/RW1` at hardware registers `0xFFE4–0xFFEB` — that let you read and write XRAM one byte at a time with auto-incrementing addresses. The LLVM-MOS SDK wraps this in convenient macros:
+The 6502 sees 63.75 KB of system RAM (`0x0000–0xFEFF`). This is where program code, the stack, and variables live. The RP6502 also has a separate 64 KB called **Extended RAM (XRAM)**. XRAM is *not* directly addressable by the 6502 — there is no `LDA` or `STA` for it. Instead, the RIA chip provides two portals — `ADDR0/RW0` and `ADDR1/RW1` at hardware registers `0xFFE4–0xFFEB` — that let you read and write XRAM one byte at a time with auto-incrementing addresses. The LLVM-MOS SDK's `rp6502.h` wraps this in convenient macros:
 
 ```c
-xram0_struct_set(ptr, vga_mode5_sprite_t, x_pos_px, 120); // write one struct field into XRAM
+xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, x_pos_px, 120); // write one struct field into XRAM
 ```
+
+XRAM has no fixed map: your program decides where everything goes. In this project that map is one file, `src/xram.h`. It defines the structures (such as `mode5_sprite_t`) and one `XRAM_` name for each address (such as `XRAM_PLAYER_CONFIG`). The map starts small in [Adding a Sprite](#adding-a-sprite) and grows as the tutorial goes on.
 
 ### XRAM is the VGA System's Memory
 
@@ -93,24 +99,26 @@ The VGA system has three numbered planes (0, 1, 2). Each plane has two independe
 - A **fill layer** — a tile map, bitmap, or console that covers the plane background.
 - A **sprite layer** — a pool of hardware sprites drawn over the fill.
 
-Different scanline ranges of the same plane can use different modes. This is how the HUD occupies just the top 24 scanlines of plane 2, while the gameplay tiles use the remaining scanlines.
+Different scanline ranges of the same plane can use different modes. This is how the gameplay tiles and sprites on planes 0 and 1 stay out of the top 24 scanlines, while the HUD tile map on plane 2 covers the full screen.
 
 This demo's plane layout:
 
 | Plane | Fill layer | Sprite layer |
 |---|---|---|
-| 0 | Background star tiles (scanlines 24–239) |  Projectile sprites (full screen) |
+| 0 | Background star tiles (scanlines 24–239) |  Projectile sprites (scanlines 24–239) |
 | 1 | Foreground star tiles (scanlines 24–239) | Enemy sprites (scanlines 24–239) |
-| 2 | HUD tile map (scanlines 0–23) | Player |
+| 2 | HUD tile map (full screen) | Player (full screen) |
 
 ### Canvas and Vsync
 
-`xreg_vga_canvas(1)` selects a canvas resolution. This demo uses canvas `1` (320×240, 4:3). Available options:
-- `0` — 80-column console
-- `1` — 320×240 (4:3)
-- `2` — 320×180 (16:9)
-- `3` — 640×480 (4:3)
-- `4` — 640×360 (16:9)
+`xreg_vga_canvas(CANVAS_320X240)` selects a canvas resolution. This demo uses `CANVAS_320X240` (320×240, 4:3). Available options:
+- `CANVAS_CONSOLE` — 80-column console
+- `CANVAS_320X240` — 320×240 (4:3)
+- `CANVAS_320X180` — 320×180 (16:9)
+- `CANVAS_640X480` — 640×480 (4:3)
+- `CANVAS_640X360` — 640×360 (16:9)
+
+These names and the `xreg_vga_canvas()` macro are not in `rp6502.h`. They come from the `xram.h` code block in the [VGA datasheet](https://picocomputer.github.io/vga.html)'s Key Registers section, which you copy into `src/xram.h`.
 
 The register `RIA.vsync` at address `0xFFE3` increments once per frame (~60 Hz) when a VGA module is connected. In practice, this tick is generated at the frame boundary (after the last programmed scanline), so it lines up closely with the start of vertical blanking. That gives you a short, reliable window to update graphics registers without visible tearing.
 
@@ -123,46 +131,64 @@ vsync_last = RIA.vsync;               // new frame — run game logic
 
 ### ROM Assets and the XRAM Address Offset
 
-In `CMakeLists.txt`, XRAM assets are given load addresses starting at `0x10000`:
+In `CMakeLists.txt`, an XRAM asset is loaded at one of the `XRAM_` names from `src/xram.h`, wrapped in `XRAM()`:
 
 ```cmake
-rp6502_asset(RPStarHopper 0x10000 images/Player_4bpp.bin)
+rp6502_map(RPStarHopper src/xram.h "XRAM_.*")
+rp6502_asset(RPStarHopper XRAM(XRAM_PLAYER_DATA) images/Player_4bpp.bin)
 ```
 
-Within your C code, XRAM is addressed `0x0000–0xFFFF`. The `0x10000` prefix in CMake is a ROM packaging convention: the ROM loader uses addresses `0x10000–0x1FFFF` to mean "load this into XRAM". Your `ADDR0` portal and all XRAM struct pointers always use plain 16-bit XRAM addresses. This is why `constants.h` defines `PLAYER_DATA = 0x0000` even though CMakeLists.txt says `0x10000`.
+Within your C code, XRAM is addressed `0x0000–0xFFFF`, and `XRAM_PLAYER_DATA` is one of those plain 16-bit addresses. Your `ADDR0` portal and all XRAM struct pointers always use them. The ROM file uses a different convention: the ROM loader uses addresses `0x10000–0x1FFFF` to mean "load this into XRAM". `XRAM()` bridges the two. It takes the 16-bit XRAM address your program uses, adds the loader's `0x10000`, and stops CMake with an error if the address is outside XRAM.
+
+`rp6502_map()` is what lets CMake use the name at all. When CMake configures, it compiles `src/xram.h` and reads the value of every `#define` that matches `XRAM_.*`. Each address is written once, in the header, and never repeated in `CMakeLists.txt`. Change the header and the next build configures again, so CMake always agrees with the C code. It must come after `add_executable()` and before any `rp6502_asset()` that uses its names.
 
 Quick mental model for addresses:
-- **System RAM (`0x0000–0xFFFF`)**: normal 6502-visible RAM for code/data/stack.
-- **XRAM (`0x0000–0xFFFF`)**: separate 64 KB memory accessed through RIA portals (`ADDR0/RW0`, `ADDR1/RW1`).
-- **ROM-packaging XRAM alias (`0x10000–0x1FFFF`)**: build-time/load-time notation meaning "copy into XRAM at low 16 bits".
+- **System RAM (`0x0000–0xFEFF`)**: normal 6502-visible RAM for code/data/stack.
+- **XRAM (`0x0000–0xFFFF`)**: separate 64 KB memory accessed through RIA portals (`ADDR0/RW0`, `ADDR1/RW1`). Every `XRAM_` name in `src/xram.h` is an address here.
+- **ROM-packaging XRAM alias (`0x10000–0x1FFFF`)**: build-time/load-time notation meaning "copy into XRAM at low 16 bits". `XRAM()` writes it for you.
 
-Example: `rp6502_asset(... 0x13A70 images/Projectiles_4bpp.bin)` means the file is packaged as a ROM chunk tagged for XRAM destination `0x3A70`.
+Example: `rp6502_asset(... XRAM(XRAM_PROJECTILE_DATA) images/Projectiles_4bpp.bin)` packages the file as a ROM chunk that loads into XRAM at `XRAM_PROJECTILE_DATA`, wherever the layout in `src/xram.h` puts it.
 
 You will also see **named ROM assets** like `Title.vgm` or `StarFields_HUD_map.bin`. These are opened by name via `open("ROM:...")` and are not fixed XRAM addresses unless your code explicitly copies them into XRAM.
 
 ### Configuring Video Modes with XREG
 
-`xreg_vga_mode(mode, options, config_addr, ...)` installs a video mode for a range of scanlines. It tells the VGA: "use mode X, reading configuration from XRAM address Y, on plane Z, for scanlines BEGIN through END." This is only called once at startup — not every frame.
+`xreg_vga_mode2()` and `xreg_vga_mode5()` install a video mode for a range of scanlines. Each one tells the VGA: "use this mode, reading configuration from XRAM address Y, on plane Z, for scanlines BEGIN through END." This is only called once at startup — not every frame.
 
-The `options` byte is a compact bitfield. For **Mode 5** (paletted sprites):
-- **bits\[5:3\]** — sprite size: `000`=8×8, `001`=16×16, `010`=32×32 …
-- **bits\[2:0\]** — color depth: `000`=1bpp, `001`=2bpp, `010`=4bpp, `011`=8bpp
+```c
+xreg_vga_mode2(options, config, plane, begin, end);         // Mode 2: tile maps
+xreg_vga_mode5(options, config, length, plane, begin, end); // Mode 5: paletted sprites
+```
 
-So `0x0A` (`0b00001010`) means **16×16 sprites, 4bpp**, and `0x02` (`0b00000010`) means **8×8 sprites, 4bpp**.
+- `options` — color depth and tile/sprite size, built from named constants.
+- `config` — the XRAM address of the mode's configuration: a `mode2_config_t`, or an array of `mode5_sprite_t`. In this project that is always an `XRAM_..._CONFIG` name from `src/xram.h`.
+- `length` (Mode 5 only) — how many sprites are in the config array.
+- `plane` — which of the three planes (0–2) to program.
+- `begin`, `end` — the scanlines to program. An `end` of `0` means the bottom of the canvas.
 
-For **Mode 2** (tile maps):
-- **bit\[3\]** — tile size: `0`=8×8, `1`=16×16
-- **bits\[2:0\]** — color depth (same table as above)
+Both macros come from the `xram.h` blocks in the Mode 2 and Mode 5 sections of the VGA datasheet. They are `xreg()` with the device, channel, register and mode number already filled in, which is why the mode number isn't an argument. `options` is a color depth OR'd with a size, using constants from the same blocks:
 
-So `0x02` means **8×8 tiles, 4bpp**. See the [VGA documentation](https://picocomputer.github.io/vga.html) for the full reference.
+| Used for | `options` | Meaning |
+|---|---|---|
+| Player and enemy sprites | `MODE5_4BPP \| MODE5_16X16` | 16×16 sprites, 4bpp |
+| Projectile sprites | `MODE5_4BPP \| MODE5_8X8` | 8×8 sprites, 4bpp |
+| Background, foreground and HUD tiles | `MODE2_4BPP \| MODE2_8X8` | 8×8 tiles, 4bpp |
+
+See the [VGA documentation](https://picocomputer.github.io/vga.html) for the full reference.
 
 ## Getting Started
 
-Tool prerequisites for this repo:
+This project is built with the [RP6502 SDK](https://picocomputer.github.io/sdk.html). The SDK documentation covers everything in this section in more depth, so keep it open alongside this tutorial.
 
-- LLVM-MOS RP6502 toolchain in VS Code (`vscode-llvm-mos` template setup)
+Tool prerequisites for this repo (the first five come from the [project template's README](https://github.com/picocomputer/rp6502-sdk)):
+
+- CMake 3.21 or newer
 - Python 3
-- Pillow for image conversion scripts
+- git
+- A build tool CMake can drive: GNU Make or Ninja
+- [llvm-mos](https://llvm-mos.org/wiki/Welcome), installed with its own installer. Do not use an llvm-mos from a package manager; it will be too old.
+- VS Code, with the extensions the project recommends (VS Code prompts for them when you open the folder): the C/C++ Extension Pack, which includes CMake Tools, to build; LLDB DAP, to debug in the emulator; and Python Debugger, to send the ROM to a Picocomputer.
+- Pillow for this repo's image conversion scripts
 
 Install Python dependency:
 
@@ -170,39 +196,62 @@ Install Python dependency:
 python3 -m pip install pillow
 ```
 
-Get started by using the vscode-llvm-mos template from https://github.com/picocomputer/vscode-llvm-mos.  Find the "Use this template" button and follow the instructions to create a new repository.  
+On Windows, the template's README also describes a `generator` line to add to `CMakePresets.json` before you configure for the first time.
 
-Once you have your repository set up, we are going to update CMakeLists.txt to build the demo game.  Update the contents of CMakeLists.txt to have the name of the game you want to make.  In this example, we are going to make a game called RPStarHopper.  The CMakeLists.txt file should look something like this:
+Get started with the RP6502 project template from https://github.com/picocomputer/rp6502-sdk. Select "Use this template", then "Create a new repository". GitHub creates a new repository with a copy of the template. Clone it and open the folder in VS Code.
+
+The first time the project opens, CMake Tools asks for a configure preset. Choose **llvm-mos/Debug**. Debug builds carry the information breakpoints and stepping need; **llvm-mos/Release** is the optimized build for a ROM you share. The template also has `cc65/Debug` and `cc65/Release` presets, but this game is written for llvm-mos, so this repo's `CMakePresets.json` keeps only the two llvm-mos presets. You can delete the cc65 presets from your copy too, along with the template's example sources you don't use (`src/main-cc65.s` and `src/main-llvm-mos.s`).
+
+The first configure downloads the tools into `tools/`: the CMake functions, `rp6502.py`, and the emulator for your system. Commit `tools/` (the emulator binary is ignored by git) so every clone builds with the same tools. The tools change only when you update them, with the "RP6502: update tools" task (Terminal > Run Task) or from the command line:
+
+```bash
+cmake -P tools/rp6502.cmake
+```
+
+Now we are going to update CMakeLists.txt to build the demo game.  Update the contents of CMakeLists.txt to have the name of the game you want to make.  In this example, we are going to make a game called RPStarHopper.  The CMakeLists.txt file should look something like this:
 
 ```cmake
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.21)
 
-add_subdirectory(tools)
-
-set(LLVM_MOS_PLATFORM rp6502)
-find_package(llvm-mos-sdk REQUIRED)
+include(${CMAKE_CURRENT_LIST_DIR}/tools/rp6502.cmake)
 
 project(RPStarHopper C CXX ASM)
 
 add_executable(RPStarHopper)
-
+rp6502_map(RPStarHopper src/xram.h "XRAM_.*")
 rp6502_asset(RPStarHopper help src/help.txt)
-
-rp6502_executable(RPStarHopper 
-    DATA file 
-    RESET file
-)
-
+rp6502_executable(RPStarHopper DATA default RESET default)
 target_sources(RPStarHopper PRIVATE
     src/main.c
 )
 ```
 
-At this point, you should be able to build the project in VS Code with the build button and run it on your Picocomputer via F5 or the run button.  You can also run it from the command line with one of the following:
+- `include()` loads the RP6502 CMake functions from `tools/`.
+- `add_executable(RPStarHopper)` creates the program, a CMake target named `RPStarHopper`.
+- `rp6502_map()` reads the XRAM addresses for `RPStarHopper` from `src/xram.h`. We start using it in [Adding a Sprite](#adding-a-sprite).
+- `rp6502_asset()` adds an asset to the ROM. The asset named `help` is the ROM's help text, shown by the Picocomputer's HELP and INFO commands.
+- `rp6502_executable()` packages the program and its assets into `RPStarHopper.rp6502`. `DATA default RESET default` takes the load and start addresses from the llvm-mos linker output.
+- `target_sources()` lists the program's source files.
+
+At this point, you should be able to build and run the project. Press F5 ("Start Debugging"), and pick a launch configuration in the Run and Debug side panel:
+
+- **RP6502 (Emulator)** is the default. It builds the project and runs it in the emulator, with breakpoints, stepping, the call stack, variables and watch expressions. The emulator window may open behind VS Code.
+- **RP6502 (Hardware)** builds the project and runs it on your Picocomputer, over USB serial or over telnet with an RP6502-RIA-W. First set `device`, and `key` for telnet, in the `[RP6502][Launch]` section of the `.rp6502` settings file in the project folder (it is created the first time the tools run). The ROM is copied to the USB drive plugged into the Picocomputer, so a drive must be plugged in. There are no breakpoints on hardware; the program's console opens in a VS Code terminal.
+
+You can also build and run from the command line. The ROM is written to the preset's build folder, `build/llvm-mos/debug/`:
+
+```bash
+cmake --preset llvm-mos/Debug
+cmake --build --preset llvm-mos/Debug
+
+# Run in the emulator (tools/rp6502-emu.exe on Windows and WSL)
+tools/rp6502-emu build/llvm-mos/debug/RPStarHopper.rp6502
+
+# Run on a Picocomputer, using the same .rp6502 settings file as VS Code
+python3 tools/rp6502.py -c .rp6502 run build/llvm-mos/debug/RPStarHopper.rp6502
 ```
-python3 ./tools/rp6502.py run build/RPStarHopper.rp6502
-python3 ./tools/rp6502_mac.py run build/RPStarHopper.rp6502
-```
+
+`rp6502.py` works the same on Linux, macOS and Windows. In its terminal, Ctrl-A then X exits, and Ctrl-A then B sends a break.
 
 ## Provided Image Assets
 
@@ -215,11 +264,10 @@ Before we start graphics setup, here is what is already provided in `images/` an
 | `Player_4bpp.bin` | 768 bytes | Player sprite sheet (6 frames, 16x16, 4bpp). |
 | `Projectiles_4bpp.bin` | 416 bytes | Projectiles, pickups, asteroids, and explosion frames (13 frames, 8x8, 4bpp). |
 | `Enemies_4bpp.bin` | 22528 bytes | Enemy + boss sprite sheet (176 frames, 16x16, 4bpp). |
-| `StarFields_tiles_4bpp.bin` | 8096 bytes | Shared tile pixel data for BG/FG/HUD; 8x8 tiles at 4bpp (currently 253 tiles present, 256 max supported). |
+| `StarFields_tiles_4bpp.bin` | 8192 bytes | Shared tile pixel data for BG/FG/HUD; 8x8 tiles at 4bpp (256 tiles). |
 | `StarFields_BG_map.bin` | 2400 bytes | Background tilemap index grid (40x60, 1 byte per tile). |
 | `StarFields_FG_map.bin` | 2400 bytes | Foreground tilemap index grid (40x60, 1 byte per tile). |
-| `StarFields_HUD_map.bin` | 1200 bytes | HUD tilemap index grid (40x30, 1 byte per tile). |
-| `StarFields_HUD_map1.bin` | 1200 bytes | ROM-named HUD map variant used for restoring HUD tiles from ROM when needed. |
+| `StarFields_HUD_map.bin` | 1200 bytes | HUD tilemap index grid (40x30, 1 byte per tile). Also packaged as the named ROM asset `StarFields_HUD_map.bin`, which the game reads back to restore the title HUD. |
 
 ### Palette helper files
 
@@ -237,26 +285,33 @@ Asset naming convention in this project:
 
 ### XRAM placement summary
 
-These are the current XRAM load addresses from `rp6502_asset(...)` in `CMakeLists.txt`.
+Every XRAM asset is a member of `xram_layout_t` in `src/xram.h`, and `CMakeLists.txt` loads it with `rp6502_asset(RPStarHopper XRAM(<name>) <file>)`. The member's type sets its size, and its `XRAM_` name is the address the C code and CMake both use.
 
-| File | CMake load address | Notes |
-|---|---:|---|
-| `images/Player_4bpp.bin` | `0x10000` | Player sprite frames |
-| `images/StarFields_BG_map.bin` | `0x10300` | BG tile index map |
-| `images/StarFields_FG_map.bin` | `0x10C60` | FG tile index map |
-| `images/StarFields_HUD_map.bin` | `0x115C0` | HUD tile index map |
-| `images/StarFields_tiles_4bpp.bin` | `0x11A70` | Shared tile pixels |
-| `images/Projectiles_4bpp.bin` | `0x13A70` | Projectile/pickup/asteroid/explosion frames |
-| `images/Enemies_4bpp.bin` | `0x13C10` | Enemy + boss frames |
+| `xram_layout_t` member | Address name | File | Size | Notes |
+|---|---|---|---:|---|
+| `player_data` | `XRAM_PLAYER_DATA` | `images/Player_4bpp.bin` | 768 bytes | Player sprite frames (`PLAYER_FRAME_COUNT` × `sprite_16x16_t`) |
+| `starfield_bg_data` | `XRAM_STARFIELD_BG_DATA` | `images/StarFields_BG_map.bin` | 2400 bytes | BG tile index map |
+| `starfield_fg_data` | `XRAM_STARFIELD_FG_DATA` | `images/StarFields_FG_map.bin` | 2400 bytes | FG tile index map |
+| `starfield_hud_data` | `XRAM_STARFIELD_HUD_DATA` | `images/StarFields_HUD_map.bin` | 1200 bytes | HUD tile index map |
+| `starfield_tiles_data` | `XRAM_STARFIELD_TILES_DATA` | `images/StarFields_tiles_4bpp.bin` | 8192 bytes | Shared tile pixels (`STARFIELD_TILE_COUNT` × `tile_8x8_t`) |
+| `projectile_data` | `XRAM_PROJECTILE_DATA` | `images/Projectiles_4bpp.bin` | 416 bytes | Projectile/pickup/asteroid/explosion frames |
+| `enemy_data` | `XRAM_ENEMY_DATA` | `images/Enemies_4bpp.bin` | 22528 bytes | Enemy + boss frames |
+| `sfx_data` | `XRAM_SFX_DATA` | `music/sfx/sfx_xram.bin` | 2204 bytes | SFX command streams (`SFX_DATA_SIZE`, generated by `tools/generate_sfx.py`) |
 
-Reminder: in C code you access these through 16-bit XRAM pointers (for example `PLAYER_DATA = 0x0000`) because the `0x10000` prefix is the ROM-packaging address space used by the loader.
+There is no address column, because nobody writes the addresses down. The compiler works each one out from the layout, so when something grows, everything after it moves and both the C code and CMake follow. `sfx_data` is the last member so that regenerating the SFX never moves anything else.
+
+The layout also holds XRAM the program fills in at run time rather than loading from the ROM: the OPL2 registers (`XRAM_OPL`, the first member so it starts on a page boundary), the mode configurations (`XRAM_PLAYER_CONFIG`, `XRAM_TILE_BG_CONFIG` and the rest), the 16-color palettes (`XRAM_PLAYER_PALETTE` and the rest), and the keyboard and gamepad input that the RIA writes (`XRAM_KEYBOARD`, `XRAM_GAMEPAD`).
 
 ## Setting up Graphics
 
 The documentation for the Picocomputer is excellent:
 https://picocomputer.github.io
 
-For this demo we are going to work with a 320x240 canvas.   Let's start by initializing the graphics system.  We can do this by calling the xreg_vga_canvas function with a parameter of 1.  Add the following to your main.c file, as well as ```#include <stdbool.h>``` at the top of the file:
+For this demo we are going to work with a 320x240 canvas.   Let's start by initializing the graphics system.  We can do this by calling the xreg_vga_canvas function with a parameter of `CANVAS_320X240`.
+
+`xreg_vga_canvas()` and `CANVAS_320X240` are not part of `rp6502.h`. Open the [VGA datasheet](https://picocomputer.github.io/vga.html), find the code block captioned `xram.h` in the Key Registers section, select the C tab, and use its "Copy to clipboard" button. Paste it into `src/xram.h`, after the `#include` lines. Leave the template's placeholder layout (`xram_feature_t` and `XRAM_FOO`) where it is for now; the next section replaces it with a real one.
+
+Add the following to your main.c file, as well as ```#include <stdbool.h>``` and ```#include "xram.h"``` at the top of the file:
 
 
 ```c
@@ -264,16 +319,16 @@ static bool init_graphics(void)
 {
     // 320×240 canvas
     int rc;
-    rc = xreg_vga_canvas(1);
+    rc = xreg_vga_canvas(CANVAS_320X240);
     if (rc < 0) {
-        puts("Error: xreg_vga_canvas(1) failed");
+        puts("Error: xreg_vga_canvas(CANVAS_320X240) failed");
         return false;
     }
     return true;
 }
 ```
 
-The key line here is ```xreg_vga_canvas(1);``` which initializes the VGA system and sets up a canvas with a resolution of 320x240 pixels.  If the function returns a negative value, it means that there was an error initializing the graphics system, so we print an error message and return false.  If the initialization is successful, we return true.  We can now call this function from our main, and also set up a vsync loop to keep the program running.  Update your main function to look like this:
+The key line here is ```xreg_vga_canvas(CANVAS_320X240);``` which initializes the VGA system and sets up a canvas with a resolution of 320x240 pixels.  If the function returns a negative value, it means that there was an error initializing the graphics system, so we print an error message and return false.  If the initialization is successful, we return true.  We can now call this function from our main, and also set up a vsync loop to keep the program running.  Update your main function to look like this:
 
 ```c
 
@@ -308,62 +363,102 @@ We are going to use Mode 5 Sprite system for the demo.  It's very flexible and p
 We are going to load this sprite into XRAM and then draw it to the screen.  First, we need to add the sprite as an asset in our CMakeLists.txt file.  Update your CMakeLists.txt to add a new rp6502_asset for the sprite, and make sure to include the correct path to the image file.  Your CMakeLists.txt should now look like this:
 
 ```cmake
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.21)
 
-add_subdirectory(tools)
-
-set(LLVM_MOS_PLATFORM rp6502)
-find_package(llvm-mos-sdk REQUIRED)
+include(${CMAKE_CURRENT_LIST_DIR}/tools/rp6502.cmake)
 
 project(RPStarHopper C CXX ASM)
 
 add_executable(RPStarHopper)
+rp6502_map(RPStarHopper src/xram.h "XRAM_.*")
 
-rp6502_asset(RPStarHopper 0x10000 images/Player_4bpp.bin)
+rp6502_asset(RPStarHopper XRAM(XRAM_PLAYER_DATA) images/Player_4bpp.bin)
 rp6502_asset(RPStarHopper help src/help.txt)
 
-rp6502_executable(RPStarHopper 
-    DATA file 
-    RESET file
-)
+rp6502_executable(RPStarHopper DATA default RESET default)
 
 target_sources(RPStarHopper PRIVATE
     src/main.c
 )
 ```
 
-This will place the sprite in XRAM at address 0x10000.  I strongly recommend using a simple spreadsheet to track XRAM memory usage.  You can use my template if you like:
-https://docs.google.com/spreadsheets/d/1FLckfGkOWBRM4_hf3JohAPjYF4lZ37s38hei422bUt4/edit?usp=sharing
+This will place the sprite in XRAM at `XRAM_PLAYER_DATA`.  So where is that?  We decide, in `src/xram.h`.
 
-I personally like to track assets using a ```constants.h``` file.  
+The whole XRAM map lives in one file, `src/xram.h`, and it has two parts.
+
+First come the structures of each device the program uses. You don't write these yourself: each one is in the [RIA](https://picocomputer.github.io/ria.html) or [VGA](https://picocomputer.github.io/vga.html) datasheet, in a code block captioned `xram.h`, together with the device's constants and XREG macro. Select the C tab and use the block's "Copy to clipboard" button to paste the whole block into `src/xram.h`. For the player sprite we need two blocks from the VGA datasheet: the Key Registers block you already copied (the canvas), and the block from the "Mode 5: Sprite 1,2,4,8-bit" section. The part of the Mode 5 block we use first is the structure that configures one sprite:
+
+```c
+typedef struct
+{
+    int16_t x_pos_px;
+    int16_t y_pos_px;
+    uint16_t xram_sprite_ptr;
+    uint16_t palette_ptr;
+} mode5_sprite_t;
+```
+
+Then comes the layout: one `xram_layout_t` struct that places everything the program keeps in XRAM, one member after another, and one `#define XRAM_<NAME> offsetof(xram_layout_t, <member>)` that names each address. `xram_layout_t` is never created as a variable. It only describes XRAM, and `offsetof()` turns each member into its address. Replace the template's placeholder layout with this one for the player:
+
+```c
+#ifndef XRAM_H
+#define XRAM_H
+
+#include <rp6502.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include "constants.h"
+
+/* VGA Canvas */
+/* ...the xram.h block from the VGA datasheet's Key Registers section... */
+
+/* VGA Mode 5: Sprite */
+/* ...the xram.h block from the VGA datasheet's Mode 5 section... */
+
+/* Star Hopper's XRAM. The sprites are 4-bit color, */
+/* so the images are 16-color and each palette has 1 << 4 entries. */
+
+typedef MODE5_IMAGE(4, 16) sprite_16x16_t;
+
+#define PLAYER_FRAME_SIZE sizeof(sprite_16x16_t)
+
+typedef struct
+{
+    mode5_sprite_t player_config;
+    uint16_t player_palette[1 << 4];
+    sprite_16x16_t player_data[PLAYER_FRAME_COUNT];
+} xram_layout_t;
+
+#define XRAM_PLAYER_CONFIG offsetof(xram_layout_t, player_config)
+#define XRAM_PLAYER_PALETTE offsetof(xram_layout_t, player_palette)
+#define XRAM_PLAYER_DATA offsetof(xram_layout_t, player_data)
+
+#endif
+```
+
+`MODE5_IMAGE(4, 16)` comes from the Mode 5 block, and declares one 16x16 image at 4 bits per pixel (4bpp): 16 rows of 8 bytes, 128 bytes (16 * 16 * 4 bits / 8 bits per byte = 128 bytes).  The player sprite sheet is six of them, 768 bytes.  The player's palette is 16 colors of 2 bytes each, 32 bytes.  The sprite config, `mode5_sprite_t`, is 8 bytes.
+
+There is no hex math anywhere in this file.  The compiler works out every address from the sizes of the members before it, so in this layout `XRAM_PLAYER_CONFIG` is 0, `XRAM_PLAYER_PALETTE` is 8, and `XRAM_PLAYER_DATA` is 40.  If the sprite sheet gets another frame, or we add a member in the middle, every address after it moves automatically.  CMake reads the very same names through `rp6502_map()`, so `XRAM(XRAM_PLAYER_DATA)` in CMakeLists.txt always matches `XRAM_PLAYER_DATA` in the C code, and no address is ever written twice.  `rp6502_map()` also checks the layout for you: the build fails if an address is odd (mode configurations and palettes are read as 16-bit values, so they need an even address) or if the layout is larger than the 64 KB of XRAM.  The [XRAM Memory Map](https://picocomputer.github.io/sdk.html#xram-memory-map) section of the SDK documentation describes this file in full.
+
+The sizes and counts that the layout and the game code use live in ```constants.h```, which `xram.h` includes.  A file that includes `xram.h` gets both.
 
 ```c
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
-// Screen dimensions
+// Screen dimensions -- must match xreg_vga_canvas(CANVAS_320X240) in main.c
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 240
 
-// Sprite data configuration
-#define SPRITE_DATA_START       0x0000U            // Starting address in XRAM for sprite data
-
-#define PLAYER_DATA            (SPRITE_DATA_START) // Address for main tile bitmap data
-#define PLAYER_DATA_SIZE        0x0300U            // 768 bytes (6 frames 16x16 at 4bpp)
+// Sprite and tile data. The XRAM layout that holds them is src/xram.h.
 #define PLAYER_SPRITE_SIZE_PX   16                 // Player sprite is 16x16 pixels
-
-#define SPRITE_DATA_END        (PLAYER_DATA + PLAYER_DATA_SIZE) // End address for sprite data
-
-// Palette configurations
-#define PLAYER_PALETTE_ADDR    0xFC00  // 16-color palette (32 bytes, 0xFC00-0xFC1F)
-#define PLAYER_PALETTE_SIZE    0x0020
+#define PLAYER_FRAME_COUNT      6                  // idle, right, left, explode frames (3, 4, 5)
 
 #endif // CONSTANTS_H
 ```
 
-This file defines some constants for our game, including the screen dimensions and the memory layout for our sprite data.  We have defined a section of XRAM starting at 0x0000 for our sprite data, and we have allocated 768 bytes for the player sprite sheet, which is six 16x16 frames at 4 bits per pixel (4bpp).  Each 16x16 frame requires 128 bytes (16 * 16 * 4 bits / 8 bits per byte = 128 bytes), and 6 frames total 768 bytes.  If you use the Spreadsheet all the Hex math is done for you.  
-
-We have also defined XRAM space for the player's palette, which is 32 bytes (16 colors * 2 bytes per color = 32 bytes).  The palette will be stored at address 0xFC00.  We will load our custom palette data into this location in XRAM and then point the VGA system to it when we set up our sprite.  Notice that in CMakeLists.txt we have placed the sprite at 0x10000, but in our constants.h we have defined the sprite data to start at 0x0000. The offset is handled by rp6502.h XRAM calls.
+We will load our custom palette data into `XRAM_PLAYER_PALETTE` and then point the VGA system to it when we set up our sprite.  Notice that in CMakeLists.txt the sprite is loaded at `XRAM(XRAM_PLAYER_DATA)` and in the C code it is at `XRAM_PLAYER_DATA`: the same 16-bit XRAM address, and `XRAM()` adds the ROM loader's `0x10000` for you.
 
 Now let's create ```sprite_mode5.c``` and ````sprite_mode5.h```` files to handle the sprite drawing logic.  In these files, we will write functions to initialize the sprite system, load our sprite data into XRAM, and draw the sprite to the screen.  This will help us keep our main.c file clean and organized.  Here is an example of what the contents of these files might look like.  Here is the code for ```sprite_mode5.c```:
 
@@ -371,33 +466,28 @@ Now let's create ```sprite_mode5.c``` and ````sprite_mode5.h```` files to handle
 #include <rp6502.h>
 #include <stdio.h>
 #include <stdint.h>
-#include "constants.h"
+#include "xram.h"
 #include "sprite_mode5.h"
-
-// Store the player config address for updates
-unsigned PLAYER_CONFIG;
 
 void sprite_mode5_init(void) {
     int rc;
     int16_t center_x = (int16_t)((SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX) / 2);
     int16_t center_y = (int16_t)((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) * 2 / 3); // Start slightly lower than center for better composition
 
-    PLAYER_CONFIG = SPRITE_DATA_END; // Just after the end of sprite data
-
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, x_pos_px, center_x);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, y_pos_px, center_y);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, xram_sprite_ptr, PLAYER_DATA);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, palette_ptr, PLAYER_PALETTE_ADDR);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, x_pos_px, center_x);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, y_pos_px, center_y);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, xram_sprite_ptr, XRAM_PLAYER_DATA);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, palette_ptr, XRAM_PLAYER_PALETTE);
 
 
-    // Mode 5 args: MODE, OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
-    if (xreg_vga_mode(5, 0x0A, PLAYER_CONFIG, 1, 1, 0, 0) < 0) {
-        puts("xreg_vga_mode failed");
+    // Mode 5 args: OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
+    if (xreg_vga_mode5(MODE5_4BPP | MODE5_16X16, XRAM_PLAYER_CONFIG, 1, 2, 0, 0) < 0) {
+        puts("xreg_vga_mode5 failed");
         return;
     }
 
 
-    RIA.addr0 = PLAYER_PALETTE_ADDR;
+    RIA.addr0 = XRAM_PLAYER_PALETTE;
     RIA.step0 = 1;
     for (int i = 0; i < 16; i++) {
         RIA.rw0 = player_palette[i] & 0xFF;
@@ -409,18 +499,15 @@ void sprite_mode5_init(void) {
 }
 ```
 
-and here is the code for ```sprite_mode5.h```:
+`XRAM_PLAYER_CONFIG` is a compile-time constant from `src/xram.h`, so there is no variable to hold the config address and nothing to compute at run time.
+
+Here is the code for ```sprite_mode5.h```.  It doesn't declare the sprite structure itself: `mode5_sprite_t` comes from `xram.h`.
 
 ```c
 #ifndef SPRITE_MODE5_H
 #define SPRITE_MODE5_H
 
-typedef struct {
-    int16_t x_pos_px;
-    int16_t y_pos_px;
-    uint16_t xram_sprite_ptr;
-    uint16_t palette_ptr;
-} vga_mode5_sprite_t;
+#include "xram.h"
 
 // Palette extracted from Sprites/Player.png
 static const uint16_t player_palette[16] = {
@@ -462,7 +549,7 @@ and update main.c to look like this:
 #include <rp6502.h>
 #include <stdio.h>
 #include <stdbool.h>
-#include "constants.h"
+#include "xram.h"
 #include "sprite_mode5.h"
 
 
@@ -471,9 +558,9 @@ static bool init_graphics(void)
 {
     // 320×240 canvas
     int rc;
-    rc = xreg_vga_canvas(1);
+    rc = xreg_vga_canvas(CANVAS_320X240);
     if (rc < 0) {
-        puts("Error: xreg_vga_canvas(1) failed");
+        puts("Error: xreg_vga_canvas(CANVAS_320X240) failed");
         return false;
     }
 
@@ -581,7 +668,7 @@ Using this repo's actual art assets, the numbers look like this:
 | Asset | Current size at 4bpp | Equivalent at 8bpp | Equivalent at 16bpp |
 |---|---:|---:|---:|
 | Player sprite sheet (`6` frames, `16x16`) | 768 bytes | 1536 bytes | 3072 bytes |
-| Tile set (`StarFields_tiles_4bpp.bin`, currently `253` tiles, `8x8`) | 8096 bytes | 16192 bytes | 32384 bytes |
+| Tile set (`StarFields_tiles_4bpp.bin`, `256` tiles, `8x8`) | 8192 bytes | 16384 bytes | 32768 bytes |
 | Projectile sheet (`13` frames, `8x8`) | 416 bytes | 832 bytes | 1664 bytes |
 | Enemy sheet (`176` frames, `16x16`) | 22528 bytes | 45056 bytes | 90112 bytes |
 
@@ -595,8 +682,8 @@ That gives these total XRAM requirements for the current visual assets:
 | Format choice | Total asset memory |
 |---|---:|
 | Current 4bpp setup | 37904 bytes |
-| Same assets at 8bpp | 69616 bytes |
-| Same assets at 16bpp | 133232 bytes |
+| Same assets at 8bpp | 69808 bytes |
+| Same assets at 16bpp | 133616 bytes |
 
 Since XRAM is only 65536 bytes total, the current 4bpp setup fits, but the same art at 8bpp would already overflow XRAM before accounting for config structs, palettes, input buffers, or OPL registers. That is the strongest practical reason to stay with 4bpp unless you truly need more colors.
 
@@ -651,7 +738,7 @@ Both are required. The map by itself is only tile numbers; it does not contain t
 
 ### Exporting tilemaps with `tools/export_map.lua`
 
-This project includes [tools/export_map.lua](/Users/rowe/Software/rp6502/RPDemo/tools/export_map.lua), which is the exact tool used to export the game's tilemaps.
+This project includes [tools/export_map.lua](tools/export_map.lua), which is the exact tool used to export the game's tilemaps.
 
 What the script does:
 - Reads the **active sprite** in Aseprite
@@ -675,12 +762,21 @@ Example flow:
 5. Make sure there is a non-transparent tile at the top-left and bottom-right corners of the area you want exported.
 6. Run the Lua script from Aseprite.
 7. Save the output as something like `StarFields_BG_map.bin`.
-8. Add both the tileset asset and the tilemap asset to `CMakeLists.txt`.
+8. Add a member for each to `xram_layout_t` in `src/xram.h`, with its `XRAM_` define, sized from the map's width and height in tiles (see [Tilemaps and Backgrounds](#tilemaps-and-backgrounds)).
+9. Add both the tileset asset and the tilemap asset to `CMakeLists.txt`, loaded at those names.
 
 Example:
 
+```c
+// src/xram.h, inside xram_layout_t
+uint8_t starfield_bg_data[STARFIELD_BG_HEIGHT][STARFIELD_BG_WIDTH];
+
+// src/xram.h, after xram_layout_t
+#define XRAM_STARFIELD_BG_DATA offsetof(xram_layout_t, starfield_bg_data)
+```
+
 ```cmake
-rp6502_asset(RPStarHopper 0x10300 images/StarFields_BG_map.bin)
+rp6502_asset(RPStarHopper XRAM(XRAM_STARFIELD_BG_DATA) images/StarFields_BG_map.bin)
 ```
 
 The script writes one byte per tile ID, so it naturally matches Mode 2 tilemap data:
@@ -695,7 +791,7 @@ That direct mapping is the main reason this workflow is nice: what you paint in 
 
 ### Study the source art
 
-The [Sprites](/Users/rowe/Software/rp6502/RPDemo/Sprites) folder contains the Aseprite source files used to build this game. These are useful reference material if you are learning the workflow or want to reuse the same setup for your own project.
+The [Sprites](Sprites) folder contains the Aseprite source files used to build this game. These are useful reference material if you are learning the workflow or want to reuse the same setup for your own project.
 
 Relevant files include:
 - `Player.aseprite`
@@ -718,23 +814,44 @@ If you want to learn how the graphics were organized, start there. You can inspe
 
 We are going to use ```input.c```, ```input.h```, ```player_controller.c```, and ```player_controller.h``` which are designed to make handling inputs a bit easier and also allow for custom key mappings for any gamepad you want to use.  I strongly recommend reading the Picocomputer documentation.  To get started add ```input.c``` and ```player_controller.c``` to CMakeLists.txt and include the headers in main.c.  
 
-We need to allocate XRAM to fetch the current state of the inputs.  You can choose any location in XRAM that is not being used by other assets.  In our constants.h file, we have allocated the beginning of XRAM for sprite data, so we can start our input state right after the sprite data.  Update your constants.h file to include the following:
+We need to allocate XRAM to fetch the current state of the inputs.  The RIA writes the keyboard and gamepad state into XRAM continuously, but XRAM has no fixed map: the program chooses where that state goes and tells the RIA with an XREG.  In our `src/xram.h` file, that means adding the input devices to the layout.
+
+First copy two more `xram.h` blocks, both from the [RIA datasheet](https://picocomputer.github.io/ria.html): the one in the Keyboard section, which defines `keyboard_t` (a 32-byte bit array of USB HID keycodes) and `xreg_ria_keyboard()`, and the one in the Gamepads section, which defines `gamepad_t` (10 bytes for each of 4 gamepads, 40 bytes) and `xreg_ria_gamepad()`.  Then add a member for each to `xram_layout_t`, with a name for each address:
 
 ```c
-// RIA input buffers are provided at fixed XRAM addresses.
-#define GAMEPAD_INPUT   0xFF78  // 40 bytes for 4 gamepads
-#define KEYBOARD_INPUT  0xFFA0  // 32 bytes keyboard bitfield
+typedef struct
+{
+    mode5_sprite_t player_config;
+
+    uint16_t player_palette[1 << 4];
+
+    keyboard_t keyboard;
+    gamepad_t gamepad;
+
+    sprite_16x16_t player_data[PLAYER_FRAME_COUNT];
+} xram_layout_t;
+
+#define XRAM_PLAYER_CONFIG offsetof(xram_layout_t, player_config)
+
+#define XRAM_PLAYER_PALETTE offsetof(xram_layout_t, player_palette)
+
+#define XRAM_KEYBOARD offsetof(xram_layout_t, keyboard)
+#define XRAM_GAMEPAD offsetof(xram_layout_t, gamepad)
+
+#define XRAM_PLAYER_DATA offsetof(xram_layout_t, player_data)
 ```
 
-and then update your main function look like:
+The input members go before the sprite data, which pushes `XRAM_PLAYER_DATA` up by 72 bytes.  Nothing else needs to change: the C code and `XRAM(XRAM_PLAYER_DATA)` in CMakeLists.txt both pick up the new address on the next build.  `input.c` reads the state from `XRAM_KEYBOARD` and `XRAM_GAMEPAD`, so `input.h` includes `xram.h` too.
+
+and then update your main function to look like:
 
 ```c
 int main(void)
 {
 
     // Initialize input
-    xreg(0, 0, 0, KEYBOARD_INPUT);
-    xreg(0, 0, 2, GAMEPAD_INPUT);
+    xreg_ria_keyboard(XRAM_KEYBOARD);
+    xreg_ria_gamepad(XRAM_GAMEPAD);
 
     // Initialize graphics
     if (!init_graphics()) {
@@ -764,37 +881,67 @@ int main(void)
 Let's break this down.  
 ```c
     // Initialize input
-    xreg(0, 0, 0, KEYBOARD_INPUT);
-    xreg(0, 0, 2, GAMEPAD_INPUT);
+    xreg_ria_keyboard(XRAM_KEYBOARD);
+    xreg_ria_gamepad(XRAM_GAMEPAD);
 ```
-This sets the XRAM addresses for the keyboard and gamepad inputs and enables the devices.  
+This sets the XRAM addresses for the keyboard and gamepad inputs and enables the devices.  `xreg_ria_keyboard()` and `xreg_ria_gamepad()` are the XREG macros from the blocks we just copied; each one is `xreg()` with the RIA's device, channel and register filled in.  
 
 ```c
     init_input_system();
     player_controller_init();
 ```
-This initializes our input handling system and our player controller.  The input system will also look for `JOYSTICK_SH.DAT` and if it exists, it will load custom key mappings from that file.  This allows you to set up custom key mappings for any gamepad you want to use with your Picocomputer.
+This initializes our input handling system and our player controller.  The input system will also look for `JOYSTICK_SH.DAT` and if it exists, it will load extra gamepad mappings from that file (see [Mapping any gamepad with `GamepadMapper`](#mapping-any-gamepad-with-gamepadmapper) below).
+
+### Game actions
+
+The game never asks "is the X button down?". It asks about actions:
+
+```c
+typedef enum {
+    ACTION_MOVE_UP,
+    ACTION_MOVE_DOWN,
+    ACTION_MOVE_LEFT,
+    ACTION_MOVE_RIGHT,
+    ACTION_FIRE,
+    ACTION_PAUSE,
+    ACTION_START,
+    ACTION_COUNT  // Total number of actions
+} GameAction;
+```
+
+`handle_input()` reads the keyboard and gamepad state from XRAM once per frame and turns it into one bit per action, and `is_action_pressed(ACTION_FIRE)` just tests a bit.  The keyboard and the gamepad feed the same actions, so the rest of the game doesn't care which one you're using:
+
+| Action | Keyboard | Gamepad |
+|---|---|---|
+| `ACTION_MOVE_*` | W A S D, arrow keys, or keypad 8/4/6/2 (7/9/1/3 set two directions) | D-Pad or left stick |
+| `ACTION_FIRE` | every key except the move keys, P and Pause | A, B, X or Y |
+| `ACTION_PAUSE` | P or Pause | Start or Select |
+| `ACTION_START` | any key | A, B, X, Y, Start or Select |
+
+The keyboard block is a bit array of USB HID keycodes, one bit per key, so "any other key fires" is a mask: `init_input_system()` starts from all 256 bits and clears the move and pause keys, and `handle_input()` ANDs the keyboard state with it.  Two details of the keyboard block matter here.  Keycodes 0 to 3 aren't keys: bit 0 (`KEYBOARD_NO_KEY`) is set while *no* key is pressed, and bits 1 to 3 are the Num, Caps and Scroll Lock lamps, which stay set while the lamp is on.  They are cleared from both the fire mask and the "any key" test, or Caps Lock would fire forever.  Keypad keys report the same keycodes whether Num Lock is on or off, so the keypad always moves the ship.
+
+On a gamepad, the top four bits of the dpad byte are the pad's type and status (`GAMEPAD_FEAT_CONNECTED`, `GAMEPAD_FEAT_STICKS` and the button labelling), so the input system only reads a pad whose connected bit is set, and masks the dpad byte down to its four direction bits before testing them.
 
 ### Mapping any gamepad with `GamepadMapper`
 
-This repo includes a small utility program (`src/gamepad_mapper.c`) that lets you map controls for any gamepad and save the result to `JOYSTICK_SH.DAT`.
+This repo includes a small utility program (`src/gamepad_mapper.c`) that lets you map controls for an unusual gamepad and save the result to `JOYSTICK_SH.DAT`.  Most gamepads don't need it: the RIA already reports Western (AB), Eastern (BA) and PlayStation pads with their face buttons in the same places, and all four face buttons fire.
 
 What it does:
-- Prompts you for each in-game action (`MOVE UP`, `MOVE DOWN`, `MOVE LEFT`, `MOVE RIGHT`, `BUTTON A/B/X/Y`, `BUTTON LT/RT`, `SELECT`, `START`).
+- Prompts you for each control (`MOVE UP`, `MOVE DOWN`, `MOVE LEFT`, `MOVE RIGHT`, `BUTTON A/B/X/Y`, `SELECT`, `START`).
 - Records the actual gamepad field/mask values for the button you press.
 - Writes the mapping file `JOYSTICK_SH.DAT` to storage.
 
-At game startup, `init_input_system()` in `input.c` automatically loads `JOYSTICK_SH.DAT` (if present), so your custom mapping is applied without any code changes.
+At game startup, `init_input_system()` in `input.c` automatically loads `JOYSTICK_SH.DAT` (if present).  A saved mapping is *added* to the standard ones rather than replacing them, so the D-Pad, the left stick and the usual buttons always keep working, and a pad that reports a button somewhere unusual gains it too.  Files written by older versions of the mapper, which also asked for LT and RT, still load; those two entries are ignored.
 
 Recommended workflow:
 
-1. Build the `GamepadMapper` target.
-2. Run/upload `GamepadMapper` on the Picocomputer.
+1. Choose `GamepadMapper` as the launch target in the CMake side panel.
+2. Press F5 with "RP6502 (Hardware)" to run it on the Picocomputer (or use the "RP6502: upload ROM" task and run it from the monitor).
 3. Follow the on-screen prompts and press the requested control for each action.
 4. Confirm `JOYSTICK_SH.DAT` was saved.
 5. Run the main game; it will pick up that mapping automatically.
 
-If `JOYSTICK_SH.DAT` is missing or invalid, the game falls back to the default mappings in `reset_button_mappings()`.
+If `JOYSTICK_SH.DAT` is missing or invalid, the game uses the standard mappings in `input.c`.
 
 In our VSYNC loop we have added:
 
@@ -825,8 +972,8 @@ void sprite_mode5_set_position(int16_t x, int16_t y)
     }
     
     // Update sprite position in XRAM
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, x_pos_px, x);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, y_pos_px, y);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, x_pos_px, x);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, y_pos_px, y);
 }
 ```
 
@@ -839,12 +986,12 @@ void sprite_mode5_set_position(int16_t x, int16_t y);
 The key here is,
 
 ```c
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, x_pos_px, x);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, y_pos_px, y);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, x_pos_px, x);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, y_pos_px, y);
 ```
 We are directly updating the XRAM values for the sprite's position.  This is a powerful feature of the Picocomputer, as it allows us to update sprite properties directly from our game logic without needing to make expensive system calls.  By writing directly to XRAM, we can achieve very fast updates to our sprites, which is essential for smooth gameplay.
 
-At this point, you should be able to move your player sprite around the screen using the D-pad or controller sticks.  You can customize the input handling logic in ```player_controller_update()``` or replace it with your own control scheme. 
+At this point, you should be able to move your player sprite around the screen using W A S D, the arrow keys, the keypad, the D-Pad or the left stick.  You can customize the input handling logic in ```player_controller_update()``` or replace it with your own control scheme. 
 
 ## Tilemaps and Backgrounds
 
@@ -857,8 +1004,8 @@ int main(void)
 {
 
     // Initialize input
-    xregn(0, 0, 0, 1, KEYBOARD_INPUT);
-    xregn(0, 0, 2, 1, GAMEPAD_INPUT);
+    xreg_ria_keyboard(XRAM_KEYBOARD);
+    xreg_ria_gamepad(XRAM_GAMEPAD);
 
     // Initialize graphics
     if (!init_graphics()) {
@@ -890,143 +1037,166 @@ This code will not work until we set up the tilemaps and load the tile data into
 - ```images/StarFields_BG_map.bin``` - This contains the tile index for each 8x8 tile in the background layer (layer 0).  It is a 40x60 tilemap.  We can have up to 256 tiles, so we need 1 byte per tile, which means this tilemap requires 2400 bytes of memory (40 tiles * 60 tiles * 1 byte per tile = 2400 bytes).  Notice that the tilemap is larger than the screen size, this allows us to scroll the background to create a parallax effect.
 - ```images/StarFields_FG_map.bin``` - This will be our foreground layer (layer 1) and it is also a 40x60 tilemap with 1 byte per tile, so it also requires 2400 bytes of memory.
 - ```images/StarFields_HUD_map.bin``` - This will be our HUD layer (layer 2) and will be a 40x30 tilemap, since we don't need to scroll it.  
-- ```images/StarFields_tiles_4bpp.bin``` - This contains the pixel data for our tiles.  Each tile is 8x8 pixels and we are using a 4bpp format, which means each pixel takes up 4 bits, so we can fit two pixels in one byte.  Therefore, each tile requires 32 bytes of memory (8 * 8 * 4 bits / 8 bits per byte = 32 bytes).  The engine layout reserves space for up to 256 tiles (8192 bytes), while the current file contains 253 tiles (8096 bytes).  
+- ```images/StarFields_tiles_4bpp.bin``` - This contains the pixel data for our tiles.  Each tile is 8x8 pixels and we are using a 4bpp format, which means each pixel takes up 4 bits, so we can fit two pixels in one byte.  Therefore, each tile requires 32 bytes of memory (8 * 8 * 4 bits / 8 bits per byte = 32 bytes).  The engine layout reserves space for 256 tiles (8192 bytes), and the current file contains all 256.  
 
 Note, we are going to share 1 set of tiles for all 3 layers, but you can have a different tileset for each layer if you want.  We will learn how to generate tile maps later on, for now we are just learning how to use them.  The tilemaps and tileset are loaded into XRAM as assets in our CMakeLists.txt file, just like we did with the sprite.  We will then set up the tilemaps in XRAM and point the VGA system to them.  Once that is done, we can update the scroll position of the tilemaps in our main loop to create a parallax scrolling effect.
 
-Let's look at part of the code for initializing the tilemaps in ```tile_mode2.c```:
+Let's look at part of the code for initializing the tilemaps in ```tile_mode2.c```, which includes ```xram.h```:
 
 ```c
-    TILE_BG_CONFIG = PLAYER_CONFIG + sizeof(vga_mode5_sprite_t); // Add after sprite config
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, x_wrap, true);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, y_wrap, true);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, x_pos_px, 0);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, y_pos_px, 0);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, width_tiles,  STARFIELD_BG_WIDTH);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, height_tiles, STARFIELD_BG_HEIGHT);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_data_ptr,    XRAM_STARFIELD_BG_DATA); // tile ID grid
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_palette_ptr, XRAM_TILE_BG_PALETTE);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_tile_ptr,    XRAM_STARFIELD_TILES_DATA);  
 
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, x_wrap, true);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, y_wrap, true);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, x_pos_px, 0);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, y_pos_px, 0);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, width_tiles,  STARFIELD_BG_WIDTH);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, height_tiles, STARFIELD_BG_HEIGHT);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, xram_data_ptr,    STARFIELD_BG_DATA); // tile ID grid
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, xram_palette_ptr, TILE_BG_PALETTE_ADDR);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, xram_tile_ptr,    STARFIELD_TILES_DATA);  
-
-    // Mode 2 args: MODE, OPTIONS, CONFIG, PLANE, BEGIN, END
-    // OPTIONS: bit3=0 (8x8 tiles), bits[2:0]=2 (4bpp, 16 colors) => 0b0010 = 2
-    // Plane 0 = background fill layer (behind sprite plane 1)
-    if (xreg_vga_mode(2, 0x02, TILE_BG_CONFIG, 0, 24, 0) < 0) {
-        puts("xreg_vga_mode failed");
+    // Mode 2 args: OPTIONS, CONFIG, PLANE, BEGIN, END
+    // Plane 0 = background fill layer, below the HUD rows
+    if (xreg_vga_mode2(MODE2_4BPP | MODE2_8X8, XRAM_TILE_BG_CONFIG, 0, HUD_TOP_PX, 0) < 0) {
+        puts("xreg_vga_mode2 failed");
         return;
     }
 ```
 
 Let's look at this step by step.
 ```c
-    TILE_BG_CONFIG = PLAYER_CONFIG + sizeof(vga_mode5_sprite_t);
+#define XRAM_TILE_BG_CONFIG offsetof(xram_layout_t, tile_bg_config)
 ```
-We are setting up the tilemap configuration in XRAM.  We place the configuration for the background layer (layer 0) just after the sprite configuration in XRAM.  
+We are setting up the tilemap configuration in XRAM.  `XRAM_TILE_BG_CONFIG` is the address of the `tile_bg_config` member we add to `xram_layout_t` below, placed just after the sprite configuration.  There is no config variable and no address arithmetic in ```tile_mode2.c```: the layout decides where the configuration for the background layer (layer 0) goes, and the compiler works out its address.  
 
 
 ```c
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, x_wrap, true);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, y_wrap, true);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, x_wrap, true);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, y_wrap, true);
 ```
 We set the wrapping mode for both X and Y to true, which means that when we scroll the tilemap, it will wrap around to the other side. 
 
 ```c
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, x_pos_px, 0);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, y_pos_px, 0);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, width_tiles,  STARFIELD_BG_WIDTH);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, height_tiles, STARFIELD_BG_HEIGHT);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, x_pos_px, 0);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, y_pos_px, 0);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, width_tiles,  STARFIELD_BG_WIDTH);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, height_tiles, STARFIELD_BG_HEIGHT);
 ```
 We set the initial position of the tilemap to (0, 0) and we specify the width and height of the tilemap in tiles.  
 
 
 ```c
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, xram_data_ptr,    STARFIELD_BG_DATA); // tile ID grid
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, xram_palette_ptr, TILE_BG_PALETTE_ADDR);
-    xram0_struct_set(TILE_BG_CONFIG, vga_mode2_config_t, xram_tile_ptr,    STARFIELD_TILES_DATA); 
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_data_ptr,    XRAM_STARFIELD_BG_DATA); // tile ID grid
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_palette_ptr, XRAM_TILE_BG_PALETTE);
+    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_tile_ptr,    XRAM_STARFIELD_TILES_DATA); 
 ```
 We then point to the XRAM address where our tilemap data is stored, as well as the address of our palette and our tileset.  
 
 ```c
-    xreg_vga_mode(2, 0x02, TILE_BG_CONFIG, 0, 24, 0)
+    xreg_vga_mode2(MODE2_4BPP | MODE2_8X8, XRAM_TILE_BG_CONFIG, 0, HUD_TOP_PX, 0)
 ```
-We then enable the tilemap layer by calling xreg_vga_mode with the appropriate parameters.  In this case, we are using Mode 2, which is the tilemap mode, and we set the options to use 8x8 tiles with an 4-bit color index (which allows for up to 16 colors in our palette).  We specify that this is plane 0, which means it will be behind the sprites on plane 1.  We also specify the begin and end scanlines for this layer, in this case we are excluding the top 24 scanlines to leave room for our HUD layer.
+We then enable the tilemap layer by calling `xreg_vga_mode2()`, which programs Mode 2, the tilemap mode.  The options `MODE2_4BPP | MODE2_8X8` select 8x8 tiles with an 4-bit color index (which allows for up to 16 colors in our palette).  We specify that this is plane 0, which means it will be behind the player sprite on plane 2.  We also specify the begin and end scanlines for this layer, in this case we begin at `HUD_TOP_PX`, excluding the top 24 scanlines to leave room for our HUD layer.
 
-We repeat this process for the foreground layer (layer 1) and the HUD layer (layer 2), making sure to use different XRAM addresses for each layer's configuration. 
+We repeat this process for the foreground layer (layer 1) and the HUD layer (layer 2), each with its own configuration member in the layout: 
 
-Next we update ```constants.h``` to include the new assets and the XRAM layout for the tilemaps:
+```c
+    xreg_vga_mode2(MODE2_4BPP | MODE2_8X8, XRAM_TILE_FG_CONFIG, 1, HUD_TOP_PX, 0);
+    xreg_vga_mode2(MODE2_4BPP | MODE2_8X8, XRAM_TILE_HUD_CONFIG, 2, 0, 0);
+```
+
+Next we update ```src/xram.h``` to include the new assets and the XRAM layout for the tilemaps.  Copy the `xram.h` block from the "Mode 2: Tile" section of the [VGA datasheet](https://picocomputer.github.io/vga.html), which defines `mode2_config_t`, `xreg_vga_mode2()`, the `MODE2_*` options and `MODE2_TILE()`.  Then add a configuration, a palette, and the data for each tile plane to the layout.  Only the part after the datasheet blocks is shown:
+
+```c
+/* Star Hopper's XRAM. Every asset and config is 4-bit color, */
+/* so the images are 16-color and each palette has 1 << 4 entries. */
+
+typedef MODE5_IMAGE(4, 16) sprite_16x16_t;
+typedef MODE2_TILE(4, 8) tile_8x8_t;
+
+#define PLAYER_FRAME_SIZE sizeof(sprite_16x16_t)
+
+typedef struct
+{
+    mode5_sprite_t player_config;
+    mode2_config_t tile_bg_config;
+    mode2_config_t tile_fg_config;
+    mode2_config_t tile_hud_config;
+
+    uint16_t player_palette[1 << 4];
+    uint16_t tile_bg_palette[1 << 4];
+    uint16_t tile_fg_palette[1 << 4];
+    uint16_t tile_hud_palette[1 << 4];
+
+    keyboard_t keyboard;
+    gamepad_t gamepad;
+
+    /* Loaded from the ROM by CMakeLists.txt. */
+    sprite_16x16_t player_data[PLAYER_FRAME_COUNT];
+    uint8_t starfield_bg_data[STARFIELD_BG_HEIGHT][STARFIELD_BG_WIDTH];
+    uint8_t starfield_fg_data[STARFIELD_FG_HEIGHT][STARFIELD_FG_WIDTH];
+    uint8_t starfield_hud_data[STARFIELD_HUD_HEIGHT][STARFIELD_HUD_WIDTH];
+    tile_8x8_t starfield_tiles_data[STARFIELD_TILE_COUNT];
+} xram_layout_t;
+
+#define XRAM_PLAYER_CONFIG offsetof(xram_layout_t, player_config)
+#define XRAM_TILE_BG_CONFIG offsetof(xram_layout_t, tile_bg_config)
+#define XRAM_TILE_FG_CONFIG offsetof(xram_layout_t, tile_fg_config)
+#define XRAM_TILE_HUD_CONFIG offsetof(xram_layout_t, tile_hud_config)
+
+#define XRAM_PLAYER_PALETTE offsetof(xram_layout_t, player_palette)
+#define XRAM_TILE_BG_PALETTE offsetof(xram_layout_t, tile_bg_palette)
+#define XRAM_TILE_FG_PALETTE offsetof(xram_layout_t, tile_fg_palette)
+#define XRAM_TILE_HUD_PALETTE offsetof(xram_layout_t, tile_hud_palette)
+
+#define XRAM_KEYBOARD offsetof(xram_layout_t, keyboard)
+#define XRAM_GAMEPAD offsetof(xram_layout_t, gamepad)
+
+#define XRAM_PLAYER_DATA offsetof(xram_layout_t, player_data)
+#define XRAM_STARFIELD_BG_DATA offsetof(xram_layout_t, starfield_bg_data)
+#define XRAM_STARFIELD_FG_DATA offsetof(xram_layout_t, starfield_fg_data)
+#define XRAM_STARFIELD_HUD_DATA offsetof(xram_layout_t, starfield_hud_data)
+#define XRAM_STARFIELD_TILES_DATA offsetof(xram_layout_t, starfield_tiles_data)
+```
+
+Each tile map is one byte per tile, so a 40x60 map is `uint8_t [60][40]`, 2400 bytes, stored row by row just as the map file is.  `MODE2_TILE(4, 8)` declares one 8x8 tile at 4bpp, 32 bytes, and the tile set reserves room for `STARFIELD_TILE_COUNT` of them.  The sizes come from ```constants.h```:
 
 ```c
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
-// Screen dimensions
+// Screen dimensions -- must match xreg_vga_canvas(CANVAS_320X240) in main.c
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 240
 
-// Sprite data configuration
-#define SPRITE_DATA_START       0x0000U            // Starting address in XRAM for sprite data
-
-#define PLAYER_DATA            (SPRITE_DATA_START) // Address for main tile bitmap data
-#define PLAYER_DATA_SIZE        0x0300U            // 768 bytes (6 frames 16x16 at 4bpp)
+// Sprite and tile data. The XRAM layout that holds them is src/xram.h.
 #define PLAYER_SPRITE_SIZE_PX   16                 // Player sprite is 16x16 pixels
-#define PLAYER_FRAME_SIZE       0x0080U            // 128 bytes per 16x16 4bpp frame
-#define PLAYER_FRAME_COUNT      6                  // idle, left, right, explode frames (3, 4, 5)
+#define PLAYER_FRAME_COUNT      6                  // idle, right, left, explode frames (3, 4, 5)
 
-#define STARFIELD_BG_DATA      (PLAYER_DATA + PLAYER_DATA_SIZE) // Address for starfield background tilemap
-#define STARFIELD_BG_SIZE       0x0960U            // 2400 bytes (40x60 tilemap)
 #define STARFIELD_BG_WIDTH      40                 // Width of starfield background in tiles
 #define STARFIELD_BG_HEIGHT     60                 // Height of starfield background in tiles
 
-#define STARFIELD_FG_DATA      (STARFIELD_BG_DATA + STARFIELD_BG_SIZE) // Address for starfield foreground tilemap
-#define STARFIELD_FG_SIZE       0x0960U            // 2400 bytes (40x60 tilemap)
 #define STARFIELD_FG_WIDTH      40                 // Width of starfield foreground in tiles
 #define STARFIELD_FG_HEIGHT     60                 // Height of starfield foreground in tiles
 
-#define STARFIELD_HUD_DATA     (STARFIELD_FG_DATA + STARFIELD_FG_SIZE) // Address for starfield HUD tilemap
-#define STARFIELD_HUD_SIZE      0x04B0U            // 1200 bytes (40x30 tilemap)
 #define STARFIELD_HUD_WIDTH     40                 // Width of starfield HUD in tiles
 #define STARFIELD_HUD_HEIGHT    30                 // Height of starfield HUD in tiles
+#define STARFIELD_HUD_SIZE      (STARFIELD_HUD_WIDTH * STARFIELD_HUD_HEIGHT) // 1200 bytes
 
-#define STARFIELD_TILES_DATA   (STARFIELD_HUD_DATA + STARFIELD_HUD_SIZE) // Address for starfield tile bitmaps
-#define STARFIELD_TILES_SIZE    0x2000U            // Reserved 8192 bytes (up to 256 tiles at 32 bytes each for 4bpp)
+#define STARFIELD_TILE_COUNT    256                // 8x8 4bpp tiles shared by all three tile planes
 
-
-#define SPRITE_DATA_END        (STARFIELD_TILES_DATA + STARFIELD_TILES_SIZE) // End of sprite data
-
-
-// Palette configurations
-#define PLAYER_PALETTE_ADDR    0xFC00  // 16-color palette (32 bytes, 0xFC00-0xFC1F)
-#define PLAYER_PALETTE_SIZE    0x0020
-#define TILE_BG_PALETTE_ADDR   0xFC20  // 16-color palette for tile background (32 bytes, 0xFC20-0xFC3F)
-#define TILE_BG_PALETTE_SIZE   0x0020
-#define TILE_FG_PALETTE_ADDR   0xFC40  // 16-color palette for tile foreground (32 bytes, 0xFC40-0xFC5F)
-#define TILE_FG_PALETTE_SIZE   0x0020
-#define TILE_HUD_PALETTE_ADDR  0xFC60  // 16-color palette for tile HUD (32 bytes, 0xFC60-0xFC7F)
-#define TILE_HUD_PALETTE_SIZE  0x0020
-
-// RIA input buffers are provided at fixed XRAM addresses.
-#define GAMEPAD_INPUT   0xFF78  // 40 bytes for 4 gamepads
-#define KEYBOARD_INPUT  0xFFA0  // 32 bytes keyboard bitfield
-
-// Configs 
-extern unsigned PLAYER_CONFIG; // Address in XRAM where player sprite config is stored, for updates
-extern unsigned TILE_BG_CONFIG; // Address in XRAM where tile background config is stored, for updates
-extern unsigned TILE_FG_CONFIG; // Address in XRAM where tile foreground config is stored, for updates
-extern unsigned TILE_HUD_CONFIG; // Address in XRAM where tile HUD config is stored, for updates
+#define HUD_TOP_PX              24                  // Rows 0-23 are HUD; bullets expire when y < HUD_TOP_PX
 
 #endif // CONSTANTS_H
 ```
-Notice how we have defined the XRAM layout for all of our assets, including the sprite data, tilemap data, and palette data. This allows us to easily keep track of where everything is in memory and avoid any conflicts. You may notice that our player sprite is actually 3 frames of animation (idle, left, right) which is why we have allocated 384 bytes for the player sprite data (3 frames * 128 bytes per frame = 384 bytes). We will show how to update the sprite data in XRAM to animate the player in a later section. We have also defined some constants for the screen dimensions and the size of our sprite and tilemaps.
+Notice how the layout now holds all of our XRAM, including the sprite data, tilemap data, palette data and input, grouped as configurations, then palettes, then input, then the data loaded from the ROM. This allows us to easily keep track of where everything is in memory and avoid any conflicts, because two members of a struct can never overlap. You may notice that our player sprite is actually 6 frames of animation (idle, right, left, and 3 explosion frames) which is why we have allocated 768 bytes for the player sprite data (6 frames * 128 bytes per frame = 768 bytes). We will show how to update the sprite data in XRAM to animate the player in a later section. We have also defined some constants for the screen dimensions and the size of our sprite and tilemaps.
 
-Use the spreadsheet to keep track of your XRAM layout and do the hex math for you. This will help you avoid mistakes and make it easier to manage your assets as your game grows in complexity. Next we update CMakeLists.txt based on the output of the spreadsheet to include the new source files:
+There is no hex math to do and nothing to copy by hand: every asset is loaded at its `XRAM_` name. Next we update CMakeLists.txt to include the new assets:
 
 ```cmake
-rp6502_asset(RPStarHopper 0x10000 images/Player_4bpp.bin)
-rp6502_asset(RPStarHopper 0x10300 images/StarFields_BG_map.bin)
-rp6502_asset(RPStarHopper 0x10C60 images/StarFields_FG_map.bin)
-rp6502_asset(RPStarHopper 0x115C0 images/StarFields_HUD_map.bin)
-rp6502_asset(RPStarHopper 0x11A70 images/StarFields_tiles_4bpp.bin)
+rp6502_asset(RPStarHopper XRAM(XRAM_PLAYER_DATA) images/Player_4bpp.bin)
+rp6502_asset(RPStarHopper XRAM(XRAM_STARFIELD_BG_DATA) images/StarFields_BG_map.bin)
+rp6502_asset(RPStarHopper XRAM(XRAM_STARFIELD_FG_DATA) images/StarFields_FG_map.bin)
+rp6502_asset(RPStarHopper XRAM(XRAM_STARFIELD_HUD_DATA) images/StarFields_HUD_map.bin)
+rp6502_asset(RPStarHopper XRAM(XRAM_STARFIELD_TILES_DATA) images/StarFields_tiles_4bpp.bin)
 ```
 
 If we look back at our main loop, we are calling ```tile_mode2_update_scroll();``` every frame.  This function will update the scroll position of the tilemaps to create a parallax scrolling effect.  The background layer will scroll slower than the foreground layer, which creates a sense of depth and movement in the scene.  You can customize the scrolling logic in ```tile_mode2_update_scroll()``` to create different scrolling patterns or to scroll based on player movement or other game events.  With the tilemaps set up and scrolling, you should now see a starfield background with a faster scrolling foreground layer, and a HUD layer at the top of the screen. 
@@ -1062,9 +1232,9 @@ Suggested asset flow:
 
 - Author and save: `music/MyTrack.fur`
 - Export: `music/MyTrack.vgm`
-- Add as ROM asset in CMake with a `RESOURCE.###.vgm` name for runtime loading.
+- Add as ROM asset in CMake with a `MyTrack.vgm` name for runtime loading.
 
-The key files are ```music.c```, ```opl.c```, ```vgm.c``` and their corresponding header files.  You can add these to your CMakeLists.txt and include the headers in main.c.  The music system will read the VGM file from the disk and stream the OPL commands to the sound chip in real time. VGM tracks are stored as named ROM assets (e.g. `RESOURCE.001.vgm`) and opened at runtime via `open("ROM:RESOURCE.001.vgm", O_RDONLY)`. 
+The key files are ```music.c```, ```opl.c```, ```vgm.c``` and their corresponding header files.  You can add these to your CMakeLists.txt and include the headers in main.c.  The music system will read the VGM file from the disk and stream the OPL commands to the sound chip in real time. VGM tracks are stored as named ROM assets (e.g. `Level_01.vgm`) and opened at runtime via `open("ROM:Level_01.vgm", O_RDONLY)`. 
 
 ### Development vs Distribution
 
@@ -1078,10 +1248,10 @@ In practice, the same game code can support both styles:
 
 ```c
 // Development: read from external storage
-music_set_track("music/RESOURCE.001.vgm");
+music_set_track("Level_01.vgm");
 
 // Finished release: read from the bundled ROM asset
-music_set_track("ROM:RESOURCE.001.vgm");
+music_set_track("ROM:Level_01.vgm");
 ```
 
 Recommended workflow:
@@ -1090,7 +1260,7 @@ Recommended workflow:
 
 If you want CMake to skip packaging named ROM assets while developing, a simple toggle works well.
 
-In `CMakeLists.txt`:
+In `CMakeLists.txt` (an optional pattern; this repo's `CMakeLists.txt` doesn't use it):
 
 ```cmake
 option(RPSTARHOPPER_PACKAGE_ROM_ASSETS "Bundle named ROM assets" ON)
@@ -1098,8 +1268,8 @@ option(RPSTARHOPPER_PACKAGE_ROM_ASSETS "Bundle named ROM assets" ON)
 if (RPSTARHOPPER_PACKAGE_ROM_ASSETS)
     target_compile_definitions(RPStarHopper PRIVATE ASSET_PREFIX="ROM:")
 
-    rp6502_asset(RPStarHopper RESOURCE.001.vgm music/RESOURCE.001.vgm)
-    rp6502_asset(RPStarHopper RESOURCE.002.vgm music/RESOURCE.002.vgm)
+    rp6502_asset(RPStarHopper Level_01.vgm music/Level_01.vgm)
+    rp6502_asset(RPStarHopper Level_02.vgm music/Level_02.vgm)
     # ...other named ROM assets...
 else()
     target_compile_definitions(RPStarHopper PRIVATE ASSET_PREFIX="")
@@ -1115,34 +1285,60 @@ In code, build paths from one prefix:
 
 #define TRACK_PATH(name) ASSET_PREFIX name
 
-music_set_track(TRACK_PATH("RESOURCE.001.vgm"));
+music_set_track(TRACK_PATH("Level_01.vgm"));
 ```
 
 Then configure per build:
 
 ```bash
 # Development: do not package named ROM assets
-cmake -S . -B build -DRPSTARHOPPER_PACKAGE_ROM_ASSETS=OFF
+cmake --preset llvm-mos/Debug -DRPSTARHOPPER_PACKAGE_ROM_ASSETS=OFF
 
 # Distribution: package named ROM assets and use ROM: prefix
-cmake -S . -B build -DRPSTARHOPPER_PACKAGE_ROM_ASSETS=ON
+cmake --preset llvm-mos/Release -DRPSTARHOPPER_PACKAGE_ROM_ASSETS=ON
 ```
 
 For development builds, upload only changed files instead of a full ROM image. The helper script supports direct file upload and a reusable serial config file:
 
 ```bash
 # Creates/uses .rp6502 with saved device settings
-python3 ./tools/rp6502.py --config .rp6502 upload music/RESOURCE.001.vgm
+python3 ./tools/rp6502.py --config .rp6502 upload music/Level_01.vgm
 ```
 
-If you upload to a subdirectory on USB media, include that directory in runtime paths (for example `music/RESOURCE.001.vgm`).
+If you upload to a subdirectory on USB media, include that directory in runtime paths (for example `music/Level_01.vgm`).
 
-We add the following to ```constants.h```
+The OPL2 needs XRAM too: 256 bytes that will contain all the OPL2 registers.  Copy the `xram.h` block from the "Yamaha OPL2 FM Sound Generator" section of the [RIA datasheet](https://picocomputer.github.io/ria.html), which defines `opl_t` and `xreg_ria_opl()`, into ```src/xram.h```.  Then add an `opl_t` member to the layout, as the very first member, and give it a name:
+
 ```c
-#define OPL_XRAM_ADDR   0xFE00  // Native RIA OPL2 register page
-#define OPL_SIZE        0x0100
+typedef struct
+{
+    /* First, so the OPL2 registers start on a page boundary. */
+    opl_t opl;
+
+    mode5_sprite_t player_config;
+    /* ...the rest of the layout, unchanged... */
+} xram_layout_t;
+
+#define XRAM_OPL offsetof(xram_layout_t, opl)
+_Static_assert((XRAM_OPL & 0xFF) == 0, "The OPL2 registers must start on a page boundary.");
 ```
-This place in XRAM will contain all the OPL2 registers. You can choose any address in XRAM as long as that address starts on a page boundary (e.g, 0xF000, 0xF100, etc.).  In ```main.c``` we simply need to add ```music_init();```
+
+The OPL2 registers must start on a page boundary: an address whose low byte is `00`, such as `0x0000` or `0x4200`.  Offset 0 is always a page boundary, which is why `opl` goes first.  `rp6502_map()` checks that every address is even, but it cannot check page alignment, so ```src/xram.h``` checks it with `_Static_assert`: if a later change ever moves `opl` off a page boundary, the build fails with that message.  Everything after `opl` moves up by 256 bytes, and as before, the C code and CMake follow automatically.
+
+The music system enables the OPL2 at that address in `music_init()`.  `opl_config()` in ```opl.c``` makes the XREG call:
+
+```c
+// music.c, music_init()
+opl_config(1, XRAM_OPL);
+
+// opl.c
+void opl_config(uint8_t enable, uint16_t addr) {
+    (void)enable;
+    xreg_ria_opl(addr);
+}
+```
+
+In ```main.c``` we simply need to add ```music_init();```
 and ```music_update();``` to play our music track, so our main loop will look like this:
 
 ```c
@@ -1150,8 +1346,8 @@ int main(void)
 {
 
     // Initialize input
-    xreg(0, 0, 0, KEYBOARD_INPUT);
-    xreg(0, 0, 2, GAMEPAD_INPUT);
+    xreg_ria_keyboard(XRAM_KEYBOARD);
+    xreg_ria_gamepad(XRAM_GAMEPAD);
 
     // Initialise graphics
     if (!init_graphics()) {
@@ -1189,7 +1385,7 @@ This is great!  We have implemented sprites, tilemaps, and music in our game!  W
 
 We can now add frame-based animation to our player sprite by updating the sprite data in XRAM.  We can also create palette swapping effects by updating the palette data in XRAM.  This allows us to create a wide range of visual effects without needing to make expensive system calls, as we are directly manipulating the data in XRAM that the VGA system is using to render the sprites and tiles. This is the main reason for using Mode-5 for our sprites.  It saves XRAM and provides very fast updates for animations and palette swaps.
 
-If you look at ```Player_4bpp.bin``` you will see that it contains 3 frames of animation for the player sprite: an idle frame, a left movement frame, and a right movement frame.  Each frame is 128 bytes (16x16 pixels at 4bpp), so the total size of the sprite data is 384 bytes.  We can update the sprite's current frame by changing the XRAM address that the VGA system is using to fetch the sprite data.  This allows us to create animations by simply updating the frame index in XRAM. 
+If you look at ```Player_4bpp.bin``` you will see that it contains 6 frames of animation for the player sprite: an idle frame, a right movement frame, a left movement frame, and 3 explosion frames.  Each frame is 128 bytes (16x16 pixels at 4bpp), so the total size of the sprite data is 768 bytes.  We can update the sprite's current frame by changing the XRAM address that the VGA system is using to fetch the sprite data.  This allows us to create animations by simply updating the frame index in XRAM. 
 
 We can also create palette swapping effects by updating the palette data in XRAM.  For example, we could change the player's colors when they take damage or pick up a power-up by updating the palette entries in XRAM.  This allows us to create dynamic visual effects without needing to change the sprite data itself, which can save memory and allow for more complex animations.  
 
@@ -1199,25 +1395,12 @@ In this example, we will change palettes to show when the player is moving up, d
 ```c
 void player_controller_update(void)
 {
-    // Tap LT to decrease speed by 1, tap RT to increase speed by 1.
-    bool speed_down_now = is_action_pressed(0, ACTION_BTN_LT);
-    bool speed_up_now = is_action_pressed(0, ACTION_BTN_RT);
+    bool moving_up = is_action_pressed(ACTION_MOVE_UP);
+    bool moving_down = is_action_pressed(ACTION_MOVE_DOWN);
+    bool moving_left = is_action_pressed(ACTION_MOVE_LEFT);
+    bool moving_right = is_action_pressed(ACTION_MOVE_RIGHT);
 
-    if (speed_down_now && !prev_speed_down) {
-        player_controller_set_speed(player_speed - 1);
-    }
-    if (speed_up_now && !prev_speed_up) {
-        player_controller_set_speed(player_speed + 1);
-    }
-    prev_speed_down = speed_down_now;
-    prev_speed_up = speed_up_now;
-
-    bool moving_up = is_action_pressed(0, ACTION_MOVE_UP);
-    bool moving_down = is_action_pressed(0, ACTION_MOVE_DOWN);
-    bool moving_left = is_action_pressed(0, ACTION_MOVE_LEFT);
-    bool moving_right = is_action_pressed(0, ACTION_MOVE_RIGHT);
-
-    int32_t speed_q8 = SPEED_TO_Q8(player_speed);
+    int16_t speed_q8 = SPEED_TO_Q8(player_speed);
 
     if (moving_up)    player_y_q8 -= speed_q8;
     if (moving_down)  player_y_q8 += speed_q8;
@@ -1234,12 +1417,14 @@ void player_controller_update(void)
         sprite_mode5_set_frame(0);
     }
 
-    int32_t max_x_q8 = ((int32_t)(SCREEN_WIDTH  - PLAYER_SPRITE_SIZE_PX)) << Q8_SHIFT;
-    int32_t max_y_q8 = ((int32_t)(SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX)) << Q8_SHIFT;
+    int16_t max_x_q8 = (int16_t)((SCREEN_WIDTH  - PLAYER_SPRITE_SIZE_PX) << Q8_SHIFT);
+    int16_t max_y_q8 = (int16_t)((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) << Q8_SHIFT);
 
     if (player_x_q8 < 0)         player_x_q8 = 0;
     if (player_x_q8 > max_x_q8) player_x_q8 = max_x_q8;
-    if (player_y_q8 < 0)         player_y_q8 = 0;
+    if (player_y_q8 < (int16_t)(HUD_TOP_PX << Q8_SHIFT)) {
+        player_y_q8 = (int16_t)(HUD_TOP_PX << Q8_SHIFT);
+    }
     if (player_y_q8 > max_y_q8) player_y_q8 = max_y_q8;
 
     sprite_mode5_set_position((int16_t)(player_x_q8 >> Q8_SHIFT), (int16_t)(player_y_q8 >> Q8_SHIFT));
@@ -1252,11 +1437,8 @@ We then use the boolean flags for movement to determine which frame of the sprit
 #include <rp6502.h>
 #include <stdio.h>
 #include <stdint.h>
-#include "constants.h"
+#include "xram.h"
 #include "sprite_mode5.h"
-
-// Store the player config address for updates
-unsigned PLAYER_CONFIG;
 
 static uint8_t player_frame = 0;
 static uint8_t engine_phase = 0;
@@ -1273,7 +1455,7 @@ static const uint16_t engine_colors[3] = {
 
 static void sprite_mode5_write_palette_entry(uint8_t index, uint16_t color)
 {
-    RIA.addr0 = (unsigned)(PLAYER_PALETTE_ADDR + ((unsigned)index * 2u));
+    RIA.addr0 = (unsigned)(XRAM_PLAYER_PALETTE + ((unsigned)index * sizeof(uint16_t)));
     RIA.step0 = 1;
     RIA.rw0 = color & 0xFF;
     RIA.rw0 = color >> 8;
@@ -1284,23 +1466,21 @@ void sprite_mode5_init(void) {
     int16_t center_x = (int16_t)((SCREEN_WIDTH - PLAYER_SPRITE_SIZE_PX) / 2);
     int16_t center_y = (int16_t)((SCREEN_HEIGHT - PLAYER_SPRITE_SIZE_PX) * 2 / 3); // Start slightly lower than center for better composition
 
-    PLAYER_CONFIG = SPRITE_DATA_END; // Just after the end of sprite data
-
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, x_pos_px, center_x);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, y_pos_px, center_y);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, xram_sprite_ptr, PLAYER_DATA);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, palette_ptr, PLAYER_PALETTE_ADDR);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, x_pos_px, center_x);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, y_pos_px, center_y);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, xram_sprite_ptr, XRAM_PLAYER_DATA);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, palette_ptr, XRAM_PLAYER_PALETTE);
     player_frame = 0;
 
 
-    // Mode 5 args: MODE, OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
-    if (xreg_vga_mode(5, 0x0A, PLAYER_CONFIG, 1, 1, 0, 0) < 0) {
-        puts("xreg_vga_mode failed");
+    // Mode 5 args: OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
+    if (xreg_vga_mode5(MODE5_4BPP | MODE5_16X16, XRAM_PLAYER_CONFIG, 1, 2, 0, 0) < 0) {
+        puts("xreg_vga_mode5 failed");
         return;
     }
 
 
-    RIA.addr0 = PLAYER_PALETTE_ADDR;
+    RIA.addr0 = XRAM_PLAYER_PALETTE;
     RIA.step0 = 1;
     for (int i = 0; i < 16; i++) {
         RIA.rw0 = player_palette[i] & 0xFF;
@@ -1332,8 +1512,8 @@ void sprite_mode5_set_position(int16_t x, int16_t y)
     }
     
     // Update sprite position in XRAM
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, x_pos_px, x);
-    xram0_struct_set(PLAYER_CONFIG, vga_mode5_sprite_t, y_pos_px, y);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, x_pos_px, x);
+    xram0_struct_set(XRAM_PLAYER_CONFIG, mode5_sprite_t, y_pos_px, y);
 }
 
 void sprite_mode5_set_frame(uint8_t frame_index)
@@ -1347,10 +1527,10 @@ void sprite_mode5_set_frame(uint8_t frame_index)
 
     player_frame = frame_index;
     xram0_struct_set(
-        PLAYER_CONFIG,
-        vga_mode5_sprite_t,
+        XRAM_PLAYER_CONFIG,
+        mode5_sprite_t,
         xram_sprite_ptr,
-        (PLAYER_DATA + ((unsigned)frame_index * PLAYER_FRAME_SIZE))
+        (XRAM_PLAYER_DATA + ((unsigned)frame_index * PLAYER_FRAME_SIZE))
     );
 }
 
@@ -1378,13 +1558,7 @@ and updated header file:
 #define SPRITE_MODE5_H
 
 #include <stdbool.h>
-
-typedef struct {
-    int16_t x_pos_px;
-    int16_t y_pos_px;
-    uint16_t xram_sprite_ptr;
-    uint16_t palette_ptr;
-} vga_mode5_sprite_t;
+#include "xram.h"
 
 // Palette extracted from Sprites/Player.png
 static const uint16_t player_palette[16] = {
@@ -1432,21 +1606,48 @@ Once you have added this code, you should see the player sprite change its frame
 ## Adding Bullets 
 
 We can add a new asset for our projectile sprite data, and then set up a new sprite configuration in XRAM for the projectiles.  We can then create a pool of projectile sprites that we can activate and deactivate as needed to create bullets that the player can shoot.  This is a common technique in game development called object pooling, which allows us to reuse a fixed number of sprite instances for our bullets without needing to constantly create and destroy sprites, which can be expensive in terms of performance.
-```c
-rp6502_asset(RPStarHopper 0x13A70 images/Projectiles_4bpp.bin)
+
+```cmake
+rp6502_asset(RPStarHopper XRAM(XRAM_PROJECTILE_DATA) images/Projectiles_4bpp.bin)
 ```
 
-Here is the layout for the projectile sprite data and configuration in XRAM:
+Here is the layout for the projectile sprite data and configuration in XRAM.  In ```src/xram.h```, the projectiles get a config array (one `mode5_sprite_t` per projectile), a palette, and their frames, each next to its kind:
+
 ```c
-#define PROJECTILE_DATA        (STARFIELD_TILES_DATA + STARFIELD_TILES_SIZE) // Address for projectile sprite data
-#define PROJECTILE_DATA_SIZE    0x01A0U            // 416 bytes (13 frames 8x8 at 4bpp)
+typedef MODE5_IMAGE(4, 8) sprite_8x8_t;
+
+#define PROJECTILE_FRAME_SIZE sizeof(sprite_8x8_t)
+
+typedef struct
+{
+    /* ... */
+    mode2_config_t tile_hud_config;
+    mode5_sprite_t projectile_config[MAX_PROJECTILES];
+
+    /* ... */
+    uint16_t tile_hud_palette[1 << 4];
+    uint16_t projectile_palette[1 << 4];
+
+    /* ... */
+    tile_8x8_t starfield_tiles_data[STARFIELD_TILE_COUNT];
+    sprite_8x8_t projectile_data[PROJECTILE_FRAME_COUNT];
+} xram_layout_t;
+
+#define XRAM_PROJECTILE_CONFIG offsetof(xram_layout_t, projectile_config)
+#define XRAM_PROJECTILE_PALETTE offsetof(xram_layout_t, projectile_palette)
+#define XRAM_PROJECTILE_DATA offsetof(xram_layout_t, projectile_data)
+```
+
+and the sizes in ```constants.h```:
+
+```c
 #define PROJECTILE_SPRITE_SIZE_PX   8                 // Projectile sprite is 8x8 pixels
-#define PROJECTILE_FRAME_SIZE   0x0020U            // 32 bytes per 8x8 4bpp frame
-#define PROJECTILE_FRAME_COUNT  13                 // 13 frames for projectile/pickups/asteroids/explosions
+#define PROJECTILE_FRAME_COUNT  13                  // 13 frames for projectile/pickups/asteroids/explosions
 #define MAX_PROJECTILES         40                  // Max number of projectiles on screen at once
-
-#define SPRITE_DATA_END        (PROJECTILE_DATA + PROJECTILE_DATA_SIZE) // End of sprite data
+#define MAX_PLAYER_PROJECTILES  8                   // Slots 0..(MAX_PLAYER_PROJECTILES-1) are reserved for the player
 ```
+
+`projectile_config` is 40 sprite configs, 320 bytes, and `projectile_data` is 13 frames of 32 bytes, 416 bytes.
 
 Projectile frame usage:
 - `0`: player projectile
@@ -1469,31 +1670,29 @@ Pickup behavior and effects:
 - Pickup sprites zig-zag horizontally while descending at `0.25 px/frame`.
 - Pickup collection uses a centered `6x6` hitbox inside the `8x8` sprite.
 - Energy pickup: restores `8` HP (capped by `PLAYER_MAX_HEALTH`).
-- Speed pickup: increases the player's unlocked speed cap by `+1`, restores current speed to that cap, and is capped at `PLAYER_SPEED_MAX` (`10`, or `2.5 px/frame`). LT can reduce current speed temporarily; RT can only restore up to the unlocked cap.
+- Speed pickup: increases the player's speed by `+1` (`0.25 px/frame`), capped at `PLAYER_SPEED_MAX` (`9`, or `2.25 px/frame`). Losing a life takes two steps back off, but never below the starting speed.
 - Power pickup: increases fire rate by `+1` unit (implemented as reducing shot cooldown by 1 frame), capped by `PLAYER_FIRE_RATE_MIN`.
 
-Here is the code to initialize the projectile sprites in ```sprite_mode5.c```.  Note that changed the options parameter in the xreg_vga_mode call to use 8x8 tiles with a 4-bit color index, which is appropriate for our projectile sprites.  We also set up a pool of projectile sprites in XRAM, initializing their positions off-screen and pointing them to the correct sprite data and palette.  This allows us to activate and deactivate these projectile sprites as needed during gameplay to create shooting mechanics.
+Here is the code to initialize the projectile sprites in ```sprite_mode5.c```.  Note that we changed the options in the xreg_vga_mode5 call to `MODE5_4BPP | MODE5_8X8`, 8x8 sprites with a 4-bit color index, which is appropriate for our projectile sprites.  We also set up a pool of projectile sprites in XRAM, initializing their positions off-screen and pointing them to the correct sprite data and palette.  This allows us to activate and deactivate these projectile sprites as needed during gameplay to create shooting mechanics.
 ```c
 void sprite_mode5_init_projectiles(void) {
-    PROJECTILE_CONFIG = TILE_HUD_CONFIG + sizeof(vga_mode2_config_t); // Just after tile HUD config
-
     for (uint8_t i = 0; i < MAX_PROJECTILES; i++) {
 
-        unsigned ptr = PROJECTILE_CONFIG + (i * sizeof(vga_mode5_sprite_t));
+        unsigned ptr = XRAM_PROJECTILE_CONFIG + (i * sizeof(mode5_sprite_t));
 
-        xram0_struct_set(ptr, vga_mode5_sprite_t, x_pos_px, -32); // Start off-screen
-        xram0_struct_set(ptr, vga_mode5_sprite_t, y_pos_px, -32);
-        xram0_struct_set(ptr, vga_mode5_sprite_t, xram_sprite_ptr, PROJECTILE_DATA);
-        xram0_struct_set(ptr, vga_mode5_sprite_t, palette_ptr, PROJECTILE_PALETTE_ADDR);
+        xram0_struct_set(ptr, mode5_sprite_t, x_pos_px, -32); // Start off-screen
+        xram0_struct_set(ptr, mode5_sprite_t, y_pos_px, -32);
+        xram0_struct_set(ptr, mode5_sprite_t, xram_sprite_ptr, XRAM_PROJECTILE_DATA);
+        xram0_struct_set(ptr, mode5_sprite_t, palette_ptr, XRAM_PROJECTILE_PALETTE);
     }
 
-    // Mode 5 args: MODE, OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
-    if (xreg_vga_mode(5, 0x02, PROJECTILE_CONFIG, MAX_PROJECTILES, 1, 0, 0) < 0) {
-        puts("xreg_vga_mode failed");
+    // Mode 5 args: OPTIONS, CONFIG, LENGTH, PLANE, BEGIN, END
+    if (xreg_vga_mode5(MODE5_4BPP | MODE5_8X8, XRAM_PROJECTILE_CONFIG, MAX_PROJECTILES, 0, HUD_TOP_PX, 0) < 0) {
+        puts("xreg_vga_mode5 failed");
         return;
     }
 
-    RIA.addr0 = PROJECTILE_PALETTE_ADDR;
+    RIA.addr0 = XRAM_PROJECTILE_PALETTE;
     RIA.step0 = 1;
     for (int i = 0; i < 16; i++) {
         RIA.rw0 = projectiles_palette[i] & 0xFF;
@@ -1599,8 +1798,9 @@ The example below shows how we can implement a simple game loop with a title scr
         handle_input();
 
         {
-            game_transition_t transition = game_state_handle_start_button(
-                is_action_pressed(0, ACTION_BTN_START)
+            game_transition_t transition = game_state_handle_buttons(
+                is_action_pressed(ACTION_START),
+                is_action_pressed(ACTION_PAUSE)
             );
 
             if (transition == GAME_TRANSITION_START_GAME) {
@@ -1624,7 +1824,6 @@ The example below shows how we can implement a simple game loop with a title scr
     }
   ```
 
-
 ![Leaving Warp to start the game](Screenshots/Screenshot_003.png)
 
 ## Enemies and Collision Detection
@@ -1642,26 +1841,98 @@ The implementation has four parts:
 First, add the enemy sprite sheet to CMake:
 
 ```cmake
-rp6502_asset(RPStarHopper 0x13C10 images/Enemies_4bpp.bin)
+rp6502_asset(RPStarHopper XRAM(XRAM_ENEMY_DATA) images/Enemies_4bpp.bin)
 ```
 
-Then define enemy layout in constants.h:
+Then add the enemies to the layout in ```src/xram.h```, the same way as the projectiles: a config array, a palette, and the frames.  With the enemies (and the sound effects, `sfx_data`, which this tutorial doesn't cover) in place, this is the complete layout from ```src/xram.h```, after the datasheet blocks:
 
 ```c
-#define ENEMY_DATA             (PROJECTILE_DATA + PROJECTILE_DATA_SIZE)
-#define ENEMY_DATA_SIZE        0x5800U              // 22528 bytes (176 frames 16x16 at 4bpp)
-#define ENEMY_SPRITE_SIZE_PX   16
-#define ENEMY_FRAME_SIZE       0x0080U
-#define ENEMY_TYPE_COUNT       7
-#define MAX_ENEMIES            32
+/* Star Hopper's XRAM. Every asset and config is 4-bit color, */
+/* so the images are 16-color and each palette has 1 << 4 entries. */
 
-#define ENEMY_PALETTE_ADDR     0xFCA0
-#define ENEMY_PALETTE_SIZE     0x0020
+typedef MODE5_IMAGE(4, 16) sprite_16x16_t;
+typedef MODE5_IMAGE(4, 8) sprite_8x8_t;
+typedef MODE2_TILE(4, 8) tile_8x8_t;
 
-extern unsigned ENEMY_CONFIG;
+#define PLAYER_FRAME_SIZE sizeof(sprite_16x16_t)
+#define PROJECTILE_FRAME_SIZE sizeof(sprite_8x8_t)
+#define ENEMY_FRAME_SIZE sizeof(sprite_16x16_t)
+
+typedef struct
+{
+    /* First, so the OPL2 registers start on a page boundary. */
+    opl_t opl;
+
+    mode5_sprite_t player_config;
+    mode2_config_t tile_bg_config;
+    mode2_config_t tile_fg_config;
+    mode2_config_t tile_hud_config;
+    mode5_sprite_t projectile_config[MAX_PROJECTILES];
+    mode5_sprite_t enemy_config[MAX_ENEMIES];
+
+    uint16_t player_palette[1 << 4];
+    uint16_t tile_bg_palette[1 << 4];
+    uint16_t tile_fg_palette[1 << 4];
+    uint16_t tile_hud_palette[1 << 4];
+    uint16_t projectile_palette[1 << 4];
+    uint16_t enemy_palette[1 << 4];
+
+    keyboard_t keyboard;
+    gamepad_t gamepad;
+
+    /* Loaded from the ROM by CMakeLists.txt. */
+    sprite_16x16_t player_data[PLAYER_FRAME_COUNT];
+    uint8_t starfield_bg_data[STARFIELD_BG_HEIGHT][STARFIELD_BG_WIDTH];
+    uint8_t starfield_fg_data[STARFIELD_FG_HEIGHT][STARFIELD_FG_WIDTH];
+    uint8_t starfield_hud_data[STARFIELD_HUD_HEIGHT][STARFIELD_HUD_WIDTH];
+    tile_8x8_t starfield_tiles_data[STARFIELD_TILE_COUNT];
+    sprite_8x8_t projectile_data[PROJECTILE_FRAME_COUNT];
+    sprite_16x16_t enemy_data[ENEMY_FRAME_COUNT];
+
+    /* Last, so regenerating the SFX never moves anything else. */
+    uint8_t sfx_data[SFX_DATA_SIZE];
+} xram_layout_t;
+
+#define XRAM_OPL offsetof(xram_layout_t, opl)
+_Static_assert((XRAM_OPL & 0xFF) == 0, "The OPL2 registers must start on a page boundary.");
+
+#define XRAM_PLAYER_CONFIG offsetof(xram_layout_t, player_config)
+#define XRAM_TILE_BG_CONFIG offsetof(xram_layout_t, tile_bg_config)
+#define XRAM_TILE_FG_CONFIG offsetof(xram_layout_t, tile_fg_config)
+#define XRAM_TILE_HUD_CONFIG offsetof(xram_layout_t, tile_hud_config)
+#define XRAM_PROJECTILE_CONFIG offsetof(xram_layout_t, projectile_config)
+#define XRAM_ENEMY_CONFIG offsetof(xram_layout_t, enemy_config)
+
+#define XRAM_PLAYER_PALETTE offsetof(xram_layout_t, player_palette)
+#define XRAM_TILE_BG_PALETTE offsetof(xram_layout_t, tile_bg_palette)
+#define XRAM_TILE_FG_PALETTE offsetof(xram_layout_t, tile_fg_palette)
+#define XRAM_TILE_HUD_PALETTE offsetof(xram_layout_t, tile_hud_palette)
+#define XRAM_PROJECTILE_PALETTE offsetof(xram_layout_t, projectile_palette)
+#define XRAM_ENEMY_PALETTE offsetof(xram_layout_t, enemy_palette)
+
+#define XRAM_KEYBOARD offsetof(xram_layout_t, keyboard)
+#define XRAM_GAMEPAD offsetof(xram_layout_t, gamepad)
+
+#define XRAM_PLAYER_DATA offsetof(xram_layout_t, player_data)
+#define XRAM_STARFIELD_BG_DATA offsetof(xram_layout_t, starfield_bg_data)
+#define XRAM_STARFIELD_FG_DATA offsetof(xram_layout_t, starfield_fg_data)
+#define XRAM_STARFIELD_HUD_DATA offsetof(xram_layout_t, starfield_hud_data)
+#define XRAM_STARFIELD_TILES_DATA offsetof(xram_layout_t, starfield_tiles_data)
+#define XRAM_PROJECTILE_DATA offsetof(xram_layout_t, projectile_data)
+#define XRAM_ENEMY_DATA offsetof(xram_layout_t, enemy_data)
+#define XRAM_SFX_DATA offsetof(xram_layout_t, sfx_data)
 ```
 
-`ENEMY_DATA_SIZE` is 8704 bytes because each 16x16 frame at 4bpp is 128 bytes and the current sprite sheet uses 68 frames.
+All of it comes to 41260 bytes, just over 40 KB of the 64 KB of XRAM.  `SFX_DATA_SIZE` comes from `src/sfx_layout.h`, which `tools/generate_sfx.py` writes and ```constants.h``` includes.  The enemy sizes go in ```constants.h```:
+
+```c
+#define ENEMY_SPRITE_SIZE_PX   16
+#define ENEMY_FRAME_COUNT      176                  // enemies, GAME OVER letters and bosses
+#define ENEMY_TYPE_COUNT       7
+#define MAX_ENEMIES            32
+```
+
+`enemy_data` is 22528 bytes because each 16x16 frame at 4bpp is 128 bytes and the sprite sheet holds `ENEMY_FRAME_COUNT` (176) frames.
 
 Enemy frame layout (per type):
 - Base frames for types `0..6`: `0, 6, 12, 18, 24, 30, 36`
@@ -1677,26 +1948,24 @@ In sprite_mode5.c, enemy sprites are initialized after projectile sprites:
 
 ```c
 void sprite_mode5_init_enemies(void) {
-    ENEMY_CONFIG = PROJECTILE_CONFIG + (MAX_PROJECTILES * sizeof(vga_mode5_sprite_t));
-
     for (uint8_t i = 0; i < MAX_ENEMIES; i++) {
-        unsigned ptr = ENEMY_CONFIG + ((unsigned)i * sizeof(vga_mode5_sprite_t));
-        xram0_struct_set(ptr, vga_mode5_sprite_t, x_pos_px, -32);
-        xram0_struct_set(ptr, vga_mode5_sprite_t, y_pos_px, -32);
-        xram0_struct_set(ptr, vga_mode5_sprite_t, xram_sprite_ptr, ENEMY_DATA);
-        xram0_struct_set(ptr, vga_mode5_sprite_t, palette_ptr, ENEMY_PALETTE_ADDR);
+        unsigned ptr = XRAM_ENEMY_CONFIG + ((unsigned)i * sizeof(mode5_sprite_t));
+        xram0_struct_set(ptr, mode5_sprite_t, x_pos_px, -32);
+        xram0_struct_set(ptr, mode5_sprite_t, y_pos_px, -32);
+        xram0_struct_set(ptr, mode5_sprite_t, xram_sprite_ptr, XRAM_ENEMY_DATA);
+        xram0_struct_set(ptr, mode5_sprite_t, palette_ptr, XRAM_ENEMY_PALETTE);
     }
 
-    if (xreg_vga_mode(5, 0x0A, ENEMY_CONFIG, MAX_ENEMIES, 0, 24, 0) < 0) {
-        puts("xreg_vga_mode failed");
+    if (xreg_vga_mode5(MODE5_4BPP | MODE5_16X16, XRAM_ENEMY_CONFIG, MAX_ENEMIES, 1, HUD_TOP_PX, 0) < 0) {
+        puts("xreg_vga_mode5 failed");
         return;
     }
 }
 ```
 
 Important details:
-- Plane `0` is used for enemies (with tiles and player in higher layers)
-- `BEGIN=24` keeps them out of the HUD scanlines
+- Plane `1` is used for enemies (with the HUD and player in higher plane `2`)
+- `BEGIN=HUD_TOP_PX` (scanline 24) keeps them out of the HUD scanlines
 - All enemy sprites start off-screen at `(-32, -32)`
 
 To move and retarget enemy type frames:
@@ -1704,11 +1973,11 @@ To move and retarget enemy type frames:
 ```c
 void sprite_mode5_set_enemy(uint8_t slot, int16_t x, int16_t y, uint8_t type)
 {
-    unsigned ptr = ENEMY_CONFIG + ((unsigned)slot * sizeof(vga_mode5_sprite_t));
-    xram0_struct_set(ptr, vga_mode5_sprite_t, x_pos_px, x);
-    xram0_struct_set(ptr, vga_mode5_sprite_t, y_pos_px, y);
-    xram0_struct_set(ptr, vga_mode5_sprite_t, xram_sprite_ptr,
-        (ENEMY_DATA + ((unsigned)type * ENEMY_FRAME_SIZE)));
+    unsigned ptr = XRAM_ENEMY_CONFIG + ((unsigned)slot * sizeof(mode5_sprite_t));
+    xram0_struct_set(ptr, mode5_sprite_t, x_pos_px, x);
+    xram0_struct_set(ptr, mode5_sprite_t, y_pos_px, y);
+    xram0_struct_set(ptr, mode5_sprite_t, xram_sprite_ptr,
+        (XRAM_ENEMY_DATA + ((unsigned)type * ENEMY_FRAME_SIZE)));
 }
 ```
 
@@ -1840,7 +2109,7 @@ void tile_mode2_set_score(uint32_t score)
 void tile_mode2_set_multiplier(uint8_t multiplier)
 ```
 
-This function clamps to `999999` and writes six tiles into the HUD tilemap (`STARFIELD_HUD_DATA`), mapping each decimal digit to tile index `19 + digit`.
+This function clamps to `999999` and writes six tiles into the HUD tilemap (`XRAM_STARFIELD_HUD_DATA`), mapping each decimal digit to tile index `19 + digit`.
 
 In `score.c` we keep a running score and update HUD digits whenever score changes:
 
@@ -1912,7 +2181,7 @@ Rather than creating a second projectile system for enemy bullets, we expanded t
 
 Slot usage is now:
 - player bullets: slots `0..7`
-- enemy bullets: slots `8..31`
+- enemy bullets: slots `8..39`
 
 In `projectile.h` this is represented with:
 
@@ -2070,7 +2339,7 @@ Audio timing during destruction/game-over:
 - After `GAME OVER` sprites fully assemble, there is a 2-second hold before fast title-style scroll transition starts
 
 Player collision box tuning:
-- Collision checks now use a centered `14x14` hitbox inside the `16x16` sprite (`(PLAYER_SPRITE_SIZE_PX - PLAYER_HITBOX_SIZE) / 2` offset)
+- Collision checks now use a centered `13x13` hitbox inside the `16x16` sprite (`(PLAYER_SPRITE_SIZE_PX - PLAYER_HITBOX_SIZE) / 2` offset)
 - Post-hit invulnerability window is `108` frames (twice the previous `54`-frame value)
 
 Title screen player effect:
@@ -2085,7 +2354,7 @@ At the end of the 7th subwave:
 2. Scroll transitions to fast warp style (without restoring HUD from ROM).
 3. Music switches to `music/Bonus.vgm`.
 4. Bonus tally is rendered.
-5. Press and release START to begin the next level.
+5. Press any button to begin the next level.
 
 #### Level Compositions
 
@@ -2129,7 +2398,7 @@ Health restoration:
 - 1 HP restored per enemy kill from the previous level (clamped to max).
 
 Bonus completion prompt:
-- After bonus tally and health refill complete, HUD shows `PRESS START` near the bottom.
+- After bonus tally and health refill complete, HUD shows `PRESS BUTTON` near the bottom.
 
 #### Music Flow
 
@@ -2141,10 +2410,14 @@ Gameplay tracks by level:
 - Level 5: `music/Level_05.vgm`
 - Level 6: `music/Level_06.vgm`
 - Level 7+: `music/Level_07.vgm` (also the fallback for every level past 7 -- there's no higher-level track, so the last one just keeps playing)
-- Boss battles (any level): `music/Boss.vgm`, overriding whichever level track was playing
+- Boss battles (levels 1–6): `music/Boss.vgm`, overriding whichever level track was playing
+- Final boss (level 7): `music/BossFinal.vgm`
 
 Intermission track:
 - Between levels: `music/Bonus.vgm`
+
+Victory track:
+- `YOU WIN` screen: `music/Victory.vgm`
 
 #### Game Over State
 
@@ -2160,15 +2433,15 @@ On game-over entry:
 Game-over visuals:
 - Enemy frames `42..49` are reused to spell `GAME OVER`
 - Letters fly in from different off-screen origins and converge more slowly
-- Final word placement is shifted downward to avoid overlapping `PRESS START`
+- Final word placement is shifted downward to avoid overlapping `PRESS BUTTON`
 - Only a brief delay is applied before the letter fly-in begins
 
 Foreground tile behavior on game-over transition:
 - Warp/foreground tiles are restored when transitioning back to fast title-style scrolling
 
 Exit rules from game-over:
-- Start press + release, or
-- 60-second timeout
+- Any button, or
+- 108.8-second timeout
 
 Both paths return to title and reset player, enemies, projectiles, score, HUD health, and title music.
 
@@ -2250,7 +2523,7 @@ Index 6 (chase then detonate barrage):
 If you want balancing that feels predictable, tune in this order:
 1. `ENEMY_INTER_SPAWN_FRAMES` and `ENEMY_INTER_WAVE_FRAMES`.
 2. Per-pattern attack hold timers (`timer`, `TYPE3_ATTACK_DURATION_FRAMES`).
-3. Bullet cadence values (`fire_timer` resets, `TYPE3_SPIRAL_FIRE_INTERVAL`).
+3. Bullet cadence values (`fire_timer` resets, `TYPE3_WAVE_FIRE_INTERVAL`).
 4. Bullet and movement speeds.
 
 ## Gameplay Flow and Level Transitions
@@ -2297,12 +2570,12 @@ On game-over entry:
 2. Music switches to game-over track.
 3. Background scroll transitions to title-style fast scrolling (within `GAME_OVER_SCROLL_START_DELAY_FRAMES = 120` frames = 2 seconds).
 4. Player sprite is hidden after the 2-second hold so the `GAME OVER` letters are the focus.
-5. Enemy sprite frames 7–14 are repurposed to spell out `GAME OVER`.
+5. Enemy sprite frames 42–49 are repurposed to spell out `GAME OVER`.
 6. Letters fly in from various off-screen positions and converge on screen with slower motion than the background.
 
 #### Exit Rules
 
-- **START pressed and released:** Returns to title cleanly (game state reset before transition).
+- **Any button:** Returns to title cleanly (game state reset before transition).
 - **Timeout (108.8s):** Auto-returns to title.
 
 Both paths fully reset player, enemies, projectiles, score, HUD health, and restore title music.

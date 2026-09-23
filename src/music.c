@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "constants.h"
+#include "xram.h"
 #include "opl.h"
 #include "vgm.h"
 
@@ -42,7 +42,7 @@ void music_init(void) {
     memset(&g_player, 0, sizeof(g_player));
     g_player.fd = -1;
 
-    opl_config(1, OPL_XRAM_ADDR);
+    opl_config(1, XRAM_OPL);
     music_start_current();
 
     // See wait_vsyncs() above: let the host audio thread get going before

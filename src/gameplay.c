@@ -168,7 +168,7 @@ void gameplay_reset_to_title_scene(gameplay_runtime_t *state)
     tile_mode2_set_level_banner(state->current_level, false);
     state->level_banner_visible = false;
     tile_mode2_set_level_complete_banner(false);
-    tile_mode2_set_bonus_continue_prompt(false);
+    tile_mode2_hide_press_button_prompt();
     tile_mode2_set_health(PLAYER_MAX_HEALTH);
     tile_mode2_set_lives(0);
     tile_mode2_set_speed_pickups(0);
@@ -208,7 +208,7 @@ static void start_new_run(void)
     tile_mode2_set_multiplier(score_get_multiplier());
     tile_mode2_set_paused_banner(false);
     tile_mode2_set_level_complete_banner(false);
-    tile_mode2_set_bonus_continue_prompt(false);
+    tile_mode2_hide_press_button_prompt();
     tile_mode2_set_health(PLAYER_MAX_HEALTH);
     tile_mode2_set_lives(state->extra_lives);
     tile_mode2_set_speed_pickups(player_controller_get_speed_pickup_count());
@@ -249,7 +249,7 @@ static void start_next_level(void)
     tile_mode2_set_multiplier(score_get_multiplier());
     tile_mode2_set_paused_banner(false);
     tile_mode2_set_level_complete_banner(false);
-    tile_mode2_set_bonus_continue_prompt(false);
+    tile_mode2_hide_press_button_prompt();
     tile_mode2_set_health(player_controller_get_health());
     tile_mode2_set_lives(state->extra_lives);
     tile_mode2_set_speed_pickups(player_controller_get_speed_pickup_count());
@@ -285,8 +285,7 @@ static void restart_current_level(void)
     tile_mode2_set_paused_banner(false);
     tile_mode2_set_level_complete_banner(false);
     tile_mode2_set_level_failed_banner(false);
-    tile_mode2_set_push_start_prompt(false);
-    tile_mode2_set_bonus_continue_prompt(false);
+    tile_mode2_hide_press_button_prompt();
     tile_mode2_set_health(player_controller_get_health());
     tile_mode2_set_lives(state->extra_lives);
     tile_mode2_set_speed_pickups(player_controller_get_speed_pickup_count());
@@ -320,7 +319,7 @@ static void start_victory_ending(void)
     enemy_init();
     enemy_hide_bonus_icons();
     tile_mode2_set_level_complete_banner(false);
-    tile_mode2_set_bonus_continue_prompt(false);
+    tile_mode2_hide_press_button_prompt();
     state->level_banner_visible = false;
     state->game_over_timer = GAME_OVER_TIMEOUT_FRAMES;
     state->game_over_is_victory = true;
@@ -340,14 +339,11 @@ static void handle_start_transition(game_transition_t transition)
     } else if (transition == GAME_TRANSITION_UNPAUSE_GAME) {
         tile_mode2_set_paused_banner(false);
     } else if (transition == GAME_TRANSITION_START_NEXT_LEVEL) {
-        if (level_bonus_is_complete()) {
-            if (runtime_state.current_level >= 7) {
-                start_victory_ending();
-            } else {
-                start_next_level();
-            }
+        // Only once the tally is done: level_bonus.c holds START until then.
+        if (runtime_state.current_level >= 7) {
+            start_victory_ending();
         } else {
-            game_state_enter_level_bonus();
+            start_next_level();
         }
     } else if (transition == GAME_TRANSITION_RETRY_LEVEL) {
         restart_current_level();
@@ -370,9 +366,23 @@ void gameplay_init(void)
     runtime_state.hud_power_pickups_last = 0;
 }
 
-void gameplay_frame(bool start_pressed)
+// PRESS BUTTON shows exactly while a press will be acted on.
+static void gameplay_update_press_button_prompt(void)
 {
-    game_transition_t transition = game_state_handle_start_button(start_pressed);
+    game_state_t state = game_state_get();
+
+    if (!game_state_start_ready()) {
+        tile_mode2_hide_press_button_prompt();
+    } else if (state == GAME_STATE_LEVEL_BONUS || state == GAME_STATE_LEVEL_FAILED) {
+        tile_mode2_show_press_button_prompt(PRESS_BUTTON_BONUS_Y);
+    } else {
+        tile_mode2_show_press_button_prompt(PRESS_BUTTON_TITLE_Y);
+    }
+}
+
+void gameplay_frame(bool start_pressed, bool pause_pressed)
+{
+    game_transition_t transition = game_state_handle_buttons(start_pressed, pause_pressed);
     game_state_t state;
 
     handle_start_transition(transition);
@@ -408,4 +418,5 @@ void gameplay_frame(bool start_pressed)
 
     gameplay_update_extra_life_awards(&runtime_state);
     tile_mode2_update_lives_fx();
+    gameplay_update_press_button_prompt();
 }

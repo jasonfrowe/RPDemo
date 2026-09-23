@@ -1,2 +1,14 @@
-This information is displayed with the HELP and INFO monitor commands.
-Please change it to suit your project.
+Star Hopper - a vertical shoot-em-up for the Picocomputer 6502.
+Fight through 7 levels of enemy waves and a boss at the end of each.
+
+Keyboard
+  Move    W A S D, arrow keys, or keypad (7 9 1 3 move diagonally)
+  Fire    any other key (hold for auto-fire)
+  Pause   P or Pause
+
+Gamepad
+  Move    D-Pad or left stick
+  Fire    A, B, X or Y (hold for auto-fire)
+  Pause   Start or Select
+
+Holding fire fast-forwards the bonus tally.

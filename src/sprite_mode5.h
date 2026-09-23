@@ -1,7 +1,7 @@
 #ifndef SPRITE_MODE5_H
 #define SPRITE_MODE5_H
 
-#include <rp6502.h>
+#include "xram.h"
 #include <stdint.h>
 #include <stdbool.h>
 

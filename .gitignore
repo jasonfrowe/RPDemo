@@ -2,10 +2,17 @@ __pycache__
 /.rp6502
 /build
 CMakeUserPresets.json
+/tools/rp6502-emu
+/tools/rp6502-emu.*
 .venv
 .DS_Store
 .vscode/c_cpp_properties.json
 .cache
+
+# Written at runtime by the game (hi-score) and by GamepadMapper, into
+# whatever directory the ROM runs from.
+/highscore_starhopper.dat
+/JOYSTICK_SH.DAT
 
 # Local music-authoring scratch: kept on disk, not published to GitHub.
 # The shipped VGM tracks live at music/*.vgm and their editable Furnace

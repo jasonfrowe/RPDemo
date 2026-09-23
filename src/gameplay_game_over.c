@@ -17,8 +17,7 @@
 // and asteroid hits -- no new art needed, just projectile_spawn_explosion()
 // aimed at random points instead of an enemy's position. Slots
 // FIRST_ENEMY_PROJECTILE_SLOT..MAX_PROJECTILES are free the whole time (no
-// enemy fire, no player fire besides whatever the player chooses to loose
-// while flying around during their own victory lap).
+// enemy fire, and the player's ship is parked).
 #define VICTORY_FIREWORK_INTERVAL_FRAMES 18
 #define VICTORY_FIREWORK_MARGIN_PX 24
 #define VICTORY_FIREWORK_TOP_PX (HUD_TOP_PX + 8)
@@ -203,8 +202,8 @@ static void victory_parade_update(void)
 // bolted onto the defeat flow below -- the two used to share the "GAME
 // OVER" flying-letter animation and Gameover.vgm even on a win, with a
 // tiny "YOU WIN" caption tacked on afterward as the only difference. The
-// player still gets full control of their ship for this victory lap; only
-// the defeat path hides it.
+// player's ship stays parked where it finished: any key or face button
+// returns to the title, so there is no victory lap to fly.
 static void gameplay_update_victory_state(gameplay_runtime_t *state)
 {
     if (!state->game_over_letters_started) {
@@ -217,7 +216,7 @@ static void gameplay_update_victory_state(gameplay_runtime_t *state)
         state->level_banner_visible = false;
         tile_mode2_set_level_complete_banner(false);
         tile_mode2_set_end_banner(true);
-        tile_mode2_set_bonus_continue_prompt(false);
+        tile_mode2_hide_press_button_prompt();
         tile_mode2_set_health(0);
 
         music_set_track("ROM:Victory.vgm");
@@ -229,8 +228,11 @@ static void gameplay_update_victory_state(gameplay_runtime_t *state)
 
         state->game_over_letters_started = true;
         state->game_over_scroll_started = true;
+        game_state_guard_start();
     }
 
+    sprite_mode5_set_frame(0);
+    sprite_mode5_update_engine(false);
     victory_parade_update();
     projectile_update();
     // Reuses the title screen's own rainbow-cycle mechanic on HUD palette
@@ -275,9 +277,10 @@ static void gameplay_update_defeat_state(gameplay_runtime_t *state)
                     tile_mode2_set_level_banner(state->current_level, false);
                     state->level_banner_visible = false;
                     tile_mode2_set_level_complete_banner(false);
-                    tile_mode2_set_bonus_continue_prompt(false);
+                    tile_mode2_hide_press_button_prompt();
                     tile_mode2_set_health(0);
                     state->game_over_scroll_started = true;
+                    game_state_guard_start();
                 }
             }
         }
@@ -286,11 +289,11 @@ static void gameplay_update_defeat_state(gameplay_runtime_t *state)
 
 void gameplay_update_game_over_state(gameplay_runtime_t *state)
 {
-    player_controller_update();
-
     if (state->game_over_is_victory) {
         gameplay_update_victory_state(state);
     } else {
+        // Runs the ship's destruction animation.
+        player_controller_update();
         gameplay_update_defeat_state(state);
     }
 

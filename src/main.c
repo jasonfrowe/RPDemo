@@ -1,6 +1,6 @@
 #include <rp6502.h>
 #include <stdbool.h>
-#include "constants.h"
+#include "xram.h"
 #include "sprite_mode5.h"
 #include "tile_mode2.h"
 #include "input.h"
@@ -16,7 +16,7 @@ static bool init_graphics(void)
 {
     // 320×240 canvas
     int rc;
-    rc = xreg_vga_canvas(1);
+    rc = xreg_vga_canvas(CANVAS_320X240);
     if (rc < 0) {
         return false;
     }
@@ -38,8 +38,8 @@ int main(void)
 {
 
     // Initialize input
-    xreg(0, 0, 0, KEYBOARD_INPUT);
-    xreg(0, 0, 2, GAMEPAD_INPUT);
+    xreg_ria_keyboard(XRAM_KEYBOARD);
+    xreg_ria_gamepad(XRAM_GAMEPAD);
 
     // Initialise graphics
     if (!init_graphics()) {
@@ -60,7 +60,7 @@ int main(void)
         // 2. INPUT
         handle_input();
 
-        gameplay_frame(is_action_pressed(0, ACTION_BTN_START)); 
+        gameplay_frame(is_action_pressed(ACTION_START), is_action_pressed(ACTION_PAUSE));
     }
 
     return 0;

@@ -1,18 +1,19 @@
 """Registry of the game's music slots and the mood each one should evoke.
 
 Mapping confirmed by reading RPDemo's source directly:
-  - src/music.c:29              default/title track
-  - src/gameplay.c:46-66        track_for_level() -- one distinct track per
-                                 level 1-7; level 8+ falls back to Level_07
-                                 (there's no higher-level track, so the last
-                                 one just keeps playing)
-  - src/gameplay.c:177          gameplay_reset_to_title_scene() -> title track
-  - src/gameplay_boss.c:367     BOSS_STAGE_MUSIC_TRACK (src/constants.h:111)
-  - src/level_bonus.c:116       bonus round
-  - src/gameplay_game_over.c:18 game over (win or lose)
+  - src/music.c              default/title track
+  - src/gameplay.c           track_for_level() -- one distinct track per
+                              level 1-7; level 8+ falls back to Level_07
+                              (there's no higher-level track, so the last
+                              one just keeps playing)
+  - src/gameplay.c           gameplay_reset_to_title_scene() -> title track
+  - src/gameplay_boss.c      BOSS_STAGE_MUSIC_TRACK (src/constants.h)
+  - src/level_bonus.c        bonus round
+  - src/gameplay_game_over.c game over (loss) / victory (win)
 
-`resource` is both the ROM asset name games code opens via "ROM:<resource>"
-(see CMakeLists.txt's rp6502_asset(... <resource> music/<resource>) lines)
+`resource` is both the ROM asset name game code opens via
+"ROM:<resource>.vgm" (see CMakeLists.txt's
+rp6502_asset(... <resource>.vgm music/<resource>.vgm) lines)
 and this tool's output filename stem (music/<resource>.vgm,
 music/fur_levels/<resource>.fur) -- so it doubles as the single source of
 truth tying the generator, the build, and the game's `music_set_track()`

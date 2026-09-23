@@ -2,16 +2,16 @@
 
 #include <rp6502.h>
 
-#include "constants.h"
+#include "xram.h"
 
 static void opl_hw_write(uint8_t reg, uint8_t value) {
-    RIA.addr1 = OPL_XRAM_ADDR + reg;
+    RIA.addr1 = XRAM_OPL + reg;
     RIA.rw1 = value;
 }
 
 void opl_config(uint8_t enable, uint16_t addr) {
     (void)enable;
-    xreg(0, 1, 0x01, addr);
+    xreg_ria_opl(addr);
 }
 
 void opl_write(uint8_t reg, uint8_t value) {

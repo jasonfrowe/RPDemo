@@ -4,6 +4,6 @@
 #include <stdbool.h>
 
 void gameplay_init(void);
-void gameplay_frame(bool start_pressed);
+void gameplay_frame(bool start_pressed, bool pause_pressed);
 
 #endif

@@ -2,7 +2,34 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "RP6502",
+            "name": "RP6502 (Emulator)",
+            "type": "lldb-dap",
+            "request": "launch",
+            "debugAdapterExecutable": "/usr/bin/env",
+            "debugAdapterArgs": [
+                "python3",
+                "${workspaceFolder}/tools/rp6502.py",
+                "-c",
+                "${workspaceFolder}/.rp6502",
+                "emu"
+            ],
+            "windows": {
+                "debugAdapterExecutable": "${env:ComSpec}",
+                "debugAdapterArgs": [
+                    "/c",
+                    "python",
+                    "${workspaceFolder}\\tools\\rp6502.py",
+                    "-c",
+                    "${workspaceFolder}\\.rp6502",
+                    "emu"
+                ]
+            },
+            "program": "${command:cmake.launchTargetPath}.rp6502",
+            "stopOnEntry": false,
+            "stopOnExit": true
+        },
+        {
+            "name": "RP6502 (Hardware)",
             "type": "debugpy",
             "request": "launch",
             "console": "integratedTerminal",

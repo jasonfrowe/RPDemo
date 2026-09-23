@@ -447,7 +447,6 @@ void gameplay_boss_update(gameplay_runtime_t *state)
                 if (game_state_enter_level_failed() == GAME_TRANSITION_ENTER_LEVEL_FAILED) {
                     tile_mode2_set_level_complete_banner(false);
                     tile_mode2_set_level_failed_banner(true);
-                    tile_mode2_set_push_start_prompt(true);
                 }
             } else {
                 tile_mode2_set_level_complete_banner(true);

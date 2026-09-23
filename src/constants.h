@@ -3,41 +3,27 @@
 
 #include "sfx_layout.h" // auto-generated SFX_DATA_SIZE -- see tools/generate_sfx.py
 
-// Screen dimensions
+// Screen dimensions -- must match xreg_vga_canvas(CANVAS_320X240) in main.c
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 240
 
-// Sprite data configuration
-#define SPRITE_DATA_START       0x0000U            // Starting address in XRAM for sprite data
-
-#define PLAYER_DATA            (SPRITE_DATA_START) // Address for main tile bitmap data
-#define PLAYER_DATA_SIZE        0x0300U            // 768 bytes (6 frames 16x16 at 4bpp)
+// Sprite and tile data. The XRAM layout that holds them is src/xram.h.
 #define PLAYER_SPRITE_SIZE_PX   16                 // Player sprite is 16x16 pixels
-#define PLAYER_FRAME_SIZE       0x0080U            // 128 bytes per 16x16 4bpp frame
-#define PLAYER_FRAME_COUNT      6                  // idle, left, right, explode frames (3, 4, 5)
+#define PLAYER_FRAME_COUNT      6                  // idle, right, left, explode frames (3, 4, 5)
 
-#define STARFIELD_BG_DATA      (PLAYER_DATA + PLAYER_DATA_SIZE) // Address for starfield background tilemap
-#define STARFIELD_BG_SIZE       0x0960U            // 2400 bytes (40x60 tilemap)
 #define STARFIELD_BG_WIDTH      40                 // Width of starfield background in tiles
 #define STARFIELD_BG_HEIGHT     60                 // Height of starfield background in tiles
 
-#define STARFIELD_FG_DATA      (STARFIELD_BG_DATA + STARFIELD_BG_SIZE) // Address for starfield foreground tilemap
-#define STARFIELD_FG_SIZE       0x0960U            // 2400 bytes (40x60 tilemap)
 #define STARFIELD_FG_WIDTH      40                 // Width of starfield foreground in tiles
 #define STARFIELD_FG_HEIGHT     60                 // Height of starfield foreground in tiles
 
-#define STARFIELD_HUD_DATA     (STARFIELD_FG_DATA + STARFIELD_FG_SIZE) // Address for starfield HUD tilemap
-#define STARFIELD_HUD_SIZE      0x04B0U            // 1200 bytes (40x30 tilemap)
 #define STARFIELD_HUD_WIDTH     40                 // Width of starfield HUD in tiles
 #define STARFIELD_HUD_HEIGHT    30                 // Height of starfield HUD in tiles
+#define STARFIELD_HUD_SIZE      (STARFIELD_HUD_WIDTH * STARFIELD_HUD_HEIGHT) // 1200 bytes
 
-#define STARFIELD_TILES_DATA   (STARFIELD_HUD_DATA + STARFIELD_HUD_SIZE) // Address for starfield tile bitmaps
-#define STARFIELD_TILES_SIZE    0x2000U             // 8192 bytes (256 tiles at 32 bytes each for 4bpp)
+#define STARFIELD_TILE_COUNT    256                // 8x8 4bpp tiles shared by all three tile planes
 
-#define PROJECTILE_DATA        (STARFIELD_TILES_DATA + STARFIELD_TILES_SIZE) // Address for projectile sprite data
-#define PROJECTILE_DATA_SIZE    0x01A0U            // 416 bytes (13 frames 8x8 at 4bpp)
 #define PROJECTILE_SPRITE_SIZE_PX   8                 // Projectile sprite is 8x8 pixels
-#define PROJECTILE_FRAME_SIZE   0x0020U            // 32 bytes per 8x8 4bpp frame
 #define PROJECTILE_FRAME_COUNT  13                  // 13 frames for projectile/pickups/asteroids/explosions
 #define MAX_PROJECTILES         40                  // Max number of projectiles on screen at once
 #define MAX_PLAYER_PROJECTILES  8                   // Slots 0..(MAX_PLAYER_PROJECTILES-1) are reserved for the player
@@ -113,52 +99,9 @@
 #define BOSS_STAGE_MUSIC_TRACK "ROM:Boss.vgm"
 #define BOSS_FINAL_STAGE_MUSIC_TRACK "ROM:BossFinal.vgm" // Level 7's boss only -- the final boss
 
-#define ENEMY_DATA             (PROJECTILE_DATA + PROJECTILE_DATA_SIZE) // Address for enemy sprite data
-#define ENEMY_DATA_SIZE        0x5800U              // 22528 bytes (176 frames 16x16 at 4bpp)
 #define ENEMY_SPRITE_SIZE_PX   16
-#define ENEMY_FRAME_SIZE       0x0080U              // 128 bytes per 16x16 4bpp frame
+#define ENEMY_FRAME_COUNT      176                  // enemies, GAME OVER letters and bosses
 #define ENEMY_TYPE_COUNT       7
 #define MAX_ENEMIES            32
-
-// SFX command-stream data: every SFX clip's (reg,val)/wait/end byte stream
-// (see tools/generate_sfx.py), preloaded into XRAM as a ROM asset at boot
-// like the sprite bitmaps above it, instead of opened as a ROM: file on
-// every trigger -- see src/sfx.c's module docstring for why that mattered.
-// SFX_DATA_SIZE comes from sfx_layout.h (auto-generated, included above);
-// regenerating the SFX (tools/generate_sfx.py) keeps it in sync.
-#define SFX_DATA               (ENEMY_DATA + ENEMY_DATA_SIZE)
-
-#define SPRITE_DATA_END        (SFX_DATA + SFX_DATA_SIZE) // End of sprite+SFX data
-
-
-// Palette configurations
-#define PLAYER_PALETTE_ADDR    0xFC00  // 16-color palette (32 bytes, 0xFC00-0xFC1F)
-#define PLAYER_PALETTE_SIZE    0x0020
-#define TILE_BG_PALETTE_ADDR   0xFC20  // 16-color palette for tile background (32 bytes, 0xFC20-0xFC3F)
-#define TILE_BG_PALETTE_SIZE   0x0020
-#define TILE_FG_PALETTE_ADDR   0xFC40  // 16-color palette for tile foreground (32 bytes, 0xFC40-0xFC5F)
-#define TILE_FG_PALETTE_SIZE   0x0020
-#define TILE_HUD_PALETTE_ADDR  0xFC60  // 16-color palette for tile HUD (32 bytes, 0xFC60-0xFC7F)
-#define TILE_HUD_PALETTE_SIZE  0x0020
-#define PROJECTILE_PALETTE_ADDR 0xFC80 // 16-color palette for projectiles (32 bytes, 0xFC80-0xFC9F)
-#define PROJECTILE_PALETTE_SIZE 0x0020
-#define ENEMY_PALETTE_ADDR     0xFCA0  // 16-color palette for enemies (32 bytes, 0xFCA0-0xFCBF)
-#define ENEMY_PALETTE_SIZE     0x0020
-
-// OPL2 sound chip configuration
-#define OPL_XRAM_ADDR   0xFE00  // Native RIA OPL2 register page
-#define OPL_SIZE        0x0100
-
-// RIA input buffers are provided at fixed XRAM addresses.
-#define GAMEPAD_INPUT   0xFF78  // 40 bytes for 4 gamepads
-#define KEYBOARD_INPUT  0xFFA0  // 32 bytes keyboard bitfield
-
-// Configs 
-extern unsigned PLAYER_CONFIG; // Address in XRAM where player sprite config is stored, for updates
-extern unsigned PROJECTILE_CONFIG; // Address in XRAM where projectile sprite config is stored, for updates
-extern unsigned TILE_BG_CONFIG; // Address in XRAM where tile background config is stored, for updates
-extern unsigned TILE_FG_CONFIG; // Address in XRAM where tile foreground config is stored, for updates
-extern unsigned TILE_HUD_CONFIG; // Address in XRAM where tile HUD config is stored, for updates
-extern unsigned ENEMY_CONFIG;    // Address in XRAM where enemy sprite configs start
 
 #endif // CONSTANTS_H
