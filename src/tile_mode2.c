@@ -1,12 +1,9 @@
 #include <rp6502.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <fcntl.h>
-#include <unistd.h>
+#include <string.h>
 #include "xram.h"
 #include "tile_mode2.h"
-#include "sprite_mode5.h"
-
 
 static int16_t bg_scroll_y_half = 0;
 static int16_t fg_scroll_y_half = 0;
@@ -17,8 +14,6 @@ static uint8_t fg_slowdown_tick = 0;
 static bool gameplay_transition_active = false;
 static bool transition_to_gameplay = false;
 static bool warp_tiles_replaced = false;
-static bool warp_tile_backup_valid = false;
-static uint8_t warp_tile_backup[5][sizeof(tile_8x8_t)];
 static uint16_t current_health_palette_color = 0;
 static uint8_t health_flash_tick = 0;
 static uint8_t lives_flash_slot = 0;
@@ -47,10 +42,12 @@ static uint8_t lives_flash_tick = 0;
 #define MULTIPLIER_TILE_Y 28
 #define HUD_SYMBOL_X_TILE_INDEX 225
 #define HUD_SYMBOL_EQUALS_TILE_INDEX 226
-#define PAUSED_TEXT "PAUSED"
 #define PAUSED_TEXT_X 17
 #define PAUSED_TEXT_Y 14
 #define HUD_TEXT_YELLOW (COLOR_FROM_RGB5(31, 31, 10) | COLOR_ALPHA_MASK)
+#define HUD_TEXT_PALETTE_INDEX 2
+#define HUD_HEALTH_PALETTE_INDEX 10
+#define HUD_BOSS_HEALTH_PALETTE_INDEX 12
 #define LEVEL_TEXT_X 16
 #define LEVEL_TEXT_Y 14
 #define LEVEL_TEXT_LEN 8
@@ -64,8 +61,6 @@ static uint8_t lives_flash_tick = 0;
 #define LIVES_ICON_TILE_INDEX 253
 #define LIVES_SLOT_Y 1
 #define LIVES_SLOT_0_X 26
-#define LIVES_SLOT_1_X 28
-#define LIVES_SLOT_2_X 30
 #define LIVES_MAX_DISPLAY 3
 #define LIVES_FLASH_DURATION_FRAMES 30
 #define LIVES_FLASH_TOGGLE_FRAMES 4
@@ -88,9 +83,14 @@ static uint8_t lives_flash_tick = 0;
 #define BONUS_TOTAL_Y (BONUS_TABLE_Y + 18)
 #define BONUS_ICON_TILE_X BONUS_TABLE_X
 
-#define BOSS_HEALTH_TILE_FULL_INDEX 211
 #define BOSS_HEALTH_TILE_EMPTY_INDEX 219
 #define BOSS_LOW_HEALTH_THRESHOLD (BOSS_MAX_HEALTH / 3)
+
+#define WARP_TILE_INDEX 6
+#define WARP_TILE_COUNT 5
+#define WARP_TILE_REPLACEMENT_INDEX 220
+
+static tile_8x8_t warp_tile_backup[WARP_TILE_COUNT];
 
 static uint8_t title_palette_tick = 0;
 static uint8_t title_palette_phase = 0;
@@ -106,88 +106,99 @@ static const uint16_t title_rainbow_palette[] = {
     COLOR_FROM_RGB8(255, 0, 255) | COLOR_ALPHA_MASK,
 };
 
-static const uint16_t hud_health_default_color = tile_hud_palette[10];
+static const uint8_t boss_tiles[BOSS_LABEL_TEXT_LEN] = {
+    228, // B
+    241, // O
+    245, // S
+    245, // S
+};
+
 static const uint16_t hud_health_low_color = COLOR_FROM_RGB8(255, 24, 24) | COLOR_ALPHA_MASK;
 static const uint16_t hud_health_flash_color = COLOR_FROM_RGB8(255, 255, 255) | COLOR_ALPHA_MASK;
 static const uint16_t boss_health_good_color = COLOR_FROM_RGB8(32, 255, 32) | COLOR_ALPHA_MASK;
 static const uint16_t boss_health_low_color = COLOR_FROM_RGB8(255, 32, 32) | COLOR_ALPHA_MASK;
 
-static void tile_mode2_write_hud_palette_entry(uint8_t index, uint16_t color)
+// Colors from the palette asset, for the HUD entries that change at run time.
+static uint16_t hud_health_default_color;
+static uint16_t hud_boss_health_default_color;
+
+static uint16_t tile_mode2_read_hud_palette_entry(uint8_t index)
 {
-    RIA.addr0 = XRAM_TILE_HUD_PALETTE + ((unsigned)index * sizeof(uint16_t));
-    RIA.step0 = 1;
-    RIA.rw0 = color & 0xFF;
-    RIA.rw0 = color >> 8;
+    return xram0_peek16(XRAM_TILE_HUD_PALETTE + (unsigned)index * sizeof(uint16_t));
 }
 
-static void tile_mode2_write_tile(unsigned tilemap_addr, uint8_t width, uint8_t x, uint8_t y, uint8_t tile_index)
+static void tile_mode2_write_hud_palette_entry(uint8_t index, uint16_t color)
 {
-    RIA.addr0 = tilemap_addr + ((unsigned)y * width) + x;
-    RIA.step0 = 1;
-    RIA.rw0 = tile_index;
+    xram0_poke16(XRAM_TILE_HUD_PALETTE + (unsigned)index * sizeof(uint16_t), color);
+}
+
+static unsigned tile_mode2_hud_addr(uint8_t x, uint8_t y)
+{
+    return XRAM_STARFIELD_HUD_DATA + (unsigned)y * STARFIELD_HUD_WIDTH + x;
+}
+
+static void tile_mode2_write_tile(uint8_t x, uint8_t y, uint8_t tile_index)
+{
+    xram0_poke8(tile_mode2_hud_addr(x, y), tile_index);
+}
+
+static void tile_mode2_write_tiles(uint8_t x, uint8_t y, const uint8_t *tiles, uint8_t len)
+{
+    xram0_write(tile_mode2_hud_addr(x, y), tiles, len);
 }
 
 static void tile_mode2_clear_hud_text(uint8_t x, uint8_t y, uint8_t len)
 {
-    for (uint8_t i = 0; i < len; ++i) {
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(x + i),
-            y,
-            0
-        );
-    }
+    xram0_set(tile_mode2_hud_addr(x, y), 0, len);
 }
 
-static void tile_mode2_write_two_digits(uint8_t x, uint8_t y, uint16_t value)
+static void tile_mode2_format_number(uint8_t *tiles, uint32_t value, uint8_t digits)
 {
-    uint8_t tens;
-    uint8_t ones;
-
-    if (value > 99) {
-        value = 99;
+    for (uint8_t i = digits; i-- > 0;) {
+        tiles[i] = (uint8_t)(SCORE_TILE_INDEX_BASE + value % 10u);
+        value /= 10u;
     }
 
-    tens = (uint8_t)(value / 10u);
-    ones = (uint8_t)(value % 10u);
-
-    tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, (uint8_t)(SCORE_TILE_INDEX_BASE + tens));
-    tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 1), y, (uint8_t)(SCORE_TILE_INDEX_BASE + ones));
+    // Values wider than the field clamp to all nines.
+    if (value != 0u) {
+        memset(tiles, SCORE_TILE_INDEX_BASE + 9, digits);
+    }
 }
 
-    static void tile_mode2_write_three_digits(uint8_t x, uint8_t y, uint16_t value)
-    {
-        uint8_t hundreds;
-        uint8_t tens;
-        uint8_t ones;
+static void tile_mode2_write_number(uint8_t x, uint8_t y, uint32_t value, uint8_t digits)
+{
+    uint8_t tiles[SCORE_DIGITS];
 
-        if (value > 999) {
-            value = 999;
+    tile_mode2_format_number(tiles, value, digits);
+    tile_mode2_write_tiles(x, y, tiles, digits);
+}
+
+static void tile_mode2_write_bar(uint8_t x, uint8_t y, uint8_t health, uint8_t empty_tile_index)
+{
+    uint8_t tiles[HEALTH_BAR_TILE_COUNT];
+
+    for (uint8_t i = 0; i < HEALTH_BAR_TILE_COUNT; ++i) {
+        int16_t segment_health = (int16_t)health - (int16_t)(i * HEALTH_PER_BAR_TILE);
+        uint8_t fill;
+
+        if (segment_health <= 0) {
+            fill = 0;
+        } else if (segment_health >= HEALTH_PER_BAR_TILE) {
+            fill = HEALTH_PER_BAR_TILE;
+        } else {
+            fill = (uint8_t)segment_health;
         }
 
-        hundreds = (uint8_t)(value / 100u);
-        tens = (uint8_t)((value % 100u) / 10u);
-        ones = (uint8_t)(value % 10u);
-
-        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, (uint8_t)(SCORE_TILE_INDEX_BASE + hundreds));
-        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 1), y, (uint8_t)(SCORE_TILE_INDEX_BASE + tens));
-        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + 2), y, (uint8_t)(SCORE_TILE_INDEX_BASE + ones));
+        tiles[i] = (uint8_t)(empty_tile_index - fill);
     }
 
-static void tile_mode2_write_five_digits(uint8_t x, uint8_t y, uint32_t value)
+    tile_mode2_write_tiles(x, y, tiles, sizeof(tiles));
+}
+
+static void tile_mode2_write_pickups(uint8_t x, uint8_t y, uint8_t tile_index, uint8_t count, uint8_t max_display)
 {
-    uint32_t divisor = 10000u;
-
-    if (value > 99999u) {
-        value = 99999u;
-    }
-
-    for (uint8_t i = 0; i < 5; ++i) {
-        uint8_t digit = (uint8_t)(value / divisor);
-        value = value % divisor;
-        divisor /= 10u;
-        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, (uint8_t)(SCORE_TILE_INDEX_BASE + digit));
+    for (uint8_t i = 0; i < max_display; ++i) {
+        tile_mode2_write_tile((uint8_t)(x + i), y, (i < count) ? tile_index : 0);
     }
 }
 
@@ -196,85 +207,70 @@ static uint8_t tile_mode2_bonus_row_y(uint8_t enemy_type)
     return (uint8_t)(BONUS_ROW_Y_START + (enemy_type * BONUS_ROW_Y_STEP));
 }
 
-static void tile_mode2_clear_bonus_table_area(void)
-{
-    for (uint8_t y = BONUS_TABLE_Y; y < (BONUS_TABLE_Y + BONUS_TABLE_ROWS); ++y) {
-        for (uint8_t x = BONUS_TABLE_X; x < (BONUS_TABLE_X + BONUS_TABLE_WIDTH); ++x) {
-            tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, 0);
-        }
-    }
-}
-
 static void tile_mode2_clear_title_banner(void)
 {
     for (uint8_t y = 4; y <= 16; ++y) {
-        for (uint8_t x = 8; x <= 32; ++x) {
-            tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, x, y, 0);
-        }
+        tile_mode2_clear_hud_text(8, y, 32 - 8 + 1);
     }
 }
 
-static void tile_mode2_copy_tile_bitmap(uint8_t dst_index, uint8_t src_index)
+static unsigned tile_mode2_tile_addr(uint8_t tile_index)
 {
-    uint8_t tile_data[sizeof(tile_8x8_t)];
-    unsigned src_addr = XRAM_STARFIELD_TILES_DATA + ((unsigned)src_index * sizeof(tile_8x8_t));
-    unsigned dst_addr = XRAM_STARFIELD_TILES_DATA + ((unsigned)dst_index * sizeof(tile_8x8_t));
-
-    RIA.addr0 = src_addr;
-    RIA.step0 = 1;
-    for (uint8_t i = 0; i < sizeof(tile_data); ++i) {
-        tile_data[i] = RIA.rw0;
-    }
-
-    RIA.addr0 = dst_addr;
-    RIA.step0 = 1;
-    for (uint8_t i = 0; i < sizeof(tile_data); ++i) {
-        RIA.rw0 = tile_data[i];
-    }
+    return XRAM_STARFIELD_TILES_DATA + (unsigned)tile_index * sizeof(tile_8x8_t);
 }
 
 static void tile_mode2_backup_warp_tiles(void)
 {
-    for (uint8_t t = 0; t < 5; ++t) {
-        unsigned src_addr = XRAM_STARFIELD_TILES_DATA + ((unsigned)(6 + t) * sizeof(tile_8x8_t));
-
-        RIA.addr0 = src_addr;
-        RIA.step0 = 1;
-        for (uint8_t i = 0; i < sizeof(tile_8x8_t); ++i) {
-            warp_tile_backup[t][i] = RIA.rw0;
-        }
-    }
-    warp_tile_backup_valid = true;
+    xram0_read(warp_tile_backup, tile_mode2_tile_addr(WARP_TILE_INDEX), sizeof(warp_tile_backup));
 }
 
 static void tile_mode2_restore_warp_tiles(void)
 {
-    if (!warp_tile_backup_valid) {
-        return;
-    }
-
-    for (uint8_t t = 0; t < 5; ++t) {
-        unsigned dst_addr = XRAM_STARFIELD_TILES_DATA + ((unsigned)(6 + t) * sizeof(tile_8x8_t));
-
-        RIA.addr0 = dst_addr;
-        RIA.step0 = 1;
-        for (uint8_t i = 0; i < sizeof(tile_8x8_t); ++i) {
-            RIA.rw0 = warp_tile_backup[t][i];
-        }
-    }
+    xram0_write(tile_mode2_tile_addr(WARP_TILE_INDEX), warp_tile_backup, sizeof(warp_tile_backup));
 }
 
 static void tile_mode2_replace_warp_tiles(void)
 {
-    for (uint8_t i = 0; i < 5; ++i) {
-        tile_mode2_copy_tile_bitmap((uint8_t)(6 + i), (uint8_t)(220 + i));
-    }
+    xram_move(tile_mode2_tile_addr(WARP_TILE_INDEX),
+              tile_mode2_tile_addr(WARP_TILE_REPLACEMENT_INDEX),
+              sizeof(warp_tile_backup));
 }
 
-void tile_mode2_init(void) {
-    int rc;
-    int16_t center_x = (int16_t)(0);
-    int16_t center_y = (int16_t)(0);
+void tile_mode2_init(void)
+{
+    static const mode2_config_t bg_config = {
+        .x_wrap = true,
+        .y_wrap = true,
+        .x_pos_px = 0,
+        .y_pos_px = 0,
+        .width_tiles = STARFIELD_BG_WIDTH,
+        .height_tiles = STARFIELD_BG_HEIGHT,
+        .xram_data_ptr = XRAM_STARFIELD_BG_DATA,     // tile ID grid
+        .xram_palette_ptr = XRAM_TILE_PALETTE,
+        .xram_tile_ptr = XRAM_STARFIELD_TILES_DATA,  // tile bitmaps
+    };
+    static const mode2_config_t fg_config = {
+        .x_wrap = true,
+        .y_wrap = true,
+        .x_pos_px = 0,
+        .y_pos_px = 0,
+        .width_tiles = STARFIELD_FG_WIDTH,
+        .height_tiles = STARFIELD_FG_HEIGHT,
+        .xram_data_ptr = XRAM_STARFIELD_FG_DATA,     // tile ID grid
+        .xram_palette_ptr = XRAM_TILE_PALETTE,
+        .xram_tile_ptr = XRAM_STARFIELD_TILES_DATA,  // tile bitmaps
+    };
+    static const mode2_config_t hud_config = {
+        .x_wrap = true,
+        .y_wrap = true,
+        .x_pos_px = 0,
+        .y_pos_px = 0,
+        .width_tiles = STARFIELD_HUD_WIDTH,
+        .height_tiles = STARFIELD_HUD_HEIGHT,
+        .xram_data_ptr = XRAM_STARFIELD_HUD_DATA,    // tile ID grid
+        .xram_palette_ptr = XRAM_TILE_HUD_PALETTE,
+        .xram_tile_ptr = XRAM_STARFIELD_TILES_DATA,  // tile bitmaps
+    };
 
     bg_scroll_y_half = 0;
     fg_scroll_y_half = 0;
@@ -285,86 +281,33 @@ void tile_mode2_init(void) {
     gameplay_transition_active = false;
     transition_to_gameplay = false;
     warp_tiles_replaced = false;
-    warp_tile_backup_valid = false;
     current_health_palette_color = 0;
     health_flash_tick = 0;
     title_palette_tick = 0;
     title_palette_phase = 0;
+    hud_health_default_color = tile_mode2_read_hud_palette_entry(HUD_HEALTH_PALETTE_INDEX);
+    hud_boss_health_default_color = tile_mode2_read_hud_palette_entry(HUD_BOSS_HEALTH_PALETTE_INDEX);
 
-    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, x_wrap, true);
-    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, y_wrap, true);
-    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, x_pos_px, 0);
-    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, y_pos_px, 0);
-    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, width_tiles,  STARFIELD_BG_WIDTH);
-    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, height_tiles, STARFIELD_BG_HEIGHT);
-    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_data_ptr,    XRAM_STARFIELD_BG_DATA); // tile ID grid
-    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_palette_ptr, XRAM_TILE_BG_PALETTE);
-    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, xram_tile_ptr,    XRAM_STARFIELD_TILES_DATA);        // tile bitmaps
-
-
+    xram0_write(XRAM_TILE_BG_CONFIG, &bg_config, sizeof(bg_config));
     // Mode 2 args: OPTIONS, CONFIG, PLANE, BEGIN, END
     // Plane 0 = background fill layer, below the HUD rows
     if (xreg_vga_mode2(MODE2_4BPP | MODE2_8X8, XRAM_TILE_BG_CONFIG, 0, HUD_TOP_PX, 0) < 0) {
         return;
     }
 
-    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, x_wrap, true);
-    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, y_wrap, true);
-    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, x_pos_px, 0);
-    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, y_pos_px, 0);
-    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, width_tiles,  STARFIELD_FG_WIDTH);
-    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, height_tiles, STARFIELD_FG_HEIGHT);
-    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, xram_data_ptr, XRAM_STARFIELD_FG_DATA); // tile ID grid
-    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, xram_palette_ptr, XRAM_TILE_FG_PALETTE);
-    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, xram_tile_ptr,    XRAM_STARFIELD_TILES_DATA);        // tile bitmaps
-
-
-    // Mode 2 args: OPTIONS, CONFIG, PLANE, BEGIN, END
+    xram0_write(XRAM_TILE_FG_CONFIG, &fg_config, sizeof(fg_config));
     // Plane 1 = foreground fill layer, below the HUD rows
     if (xreg_vga_mode2(MODE2_4BPP | MODE2_8X8, XRAM_TILE_FG_CONFIG, 1, HUD_TOP_PX, 0) < 0) {
         return;
     }
 
-    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, x_wrap, true);
-    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, y_wrap, true);
-    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, x_pos_px, 0);
-    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, y_pos_px, 0);
-    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, width_tiles,  STARFIELD_HUD_WIDTH);
-    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, height_tiles, STARFIELD_HUD_HEIGHT);
-    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, xram_data_ptr, XRAM_STARFIELD_HUD_DATA); // tile ID grid
-    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, xram_palette_ptr, XRAM_TILE_HUD_PALETTE);
-    xram0_struct_set(XRAM_TILE_HUD_CONFIG, mode2_config_t, xram_tile_ptr,    XRAM_STARFIELD_TILES_DATA);        // tile bitmaps
-
-
-    // Mode 2 args: OPTIONS, CONFIG, PLANE, BEGIN, END
+    xram0_write(XRAM_TILE_HUD_CONFIG, &hud_config, sizeof(hud_config));
     // Plane 2 = HUD fill layer, full screen
     if (xreg_vga_mode2(MODE2_4BPP | MODE2_8X8, XRAM_TILE_HUD_CONFIG, 2, 0, 0) < 0) {
         return;
     }
 
-
-    RIA.addr0 = XRAM_TILE_BG_PALETTE;
-    RIA.step0 = 1;
-    for (int i = 0; i < (int)(sizeof(tile_bg_palette) / sizeof(tile_bg_palette[0])); i++) {
-        RIA.rw0 = tile_bg_palette[i] & 0xFF;
-        RIA.rw0 = tile_bg_palette[i] >> 8;
-    }
-
-    RIA.addr0 = XRAM_TILE_FG_PALETTE;
-    RIA.step0 = 1;
-    for (int i = 0; i < (int)(sizeof(tile_fg_palette) / sizeof(tile_fg_palette[0])); i++) {
-        RIA.rw0 = tile_fg_palette[i] & 0xFF;
-        RIA.rw0 = tile_fg_palette[i] >> 8;
-    }
-
-    RIA.addr0 = XRAM_TILE_HUD_PALETTE;
-    RIA.step0 = 1;
-    for (int i = 0; i < (int)(sizeof(tile_hud_palette) / sizeof(tile_hud_palette[0])); i++) {
-        RIA.rw0 = tile_hud_palette[i] & 0xFF;
-        RIA.rw0 = tile_hud_palette[i] >> 8;
-    }
-
-    tile_mode2_write_hud_palette_entry(2, title_rainbow_palette[0]);
+    tile_mode2_write_hud_palette_entry(HUD_TEXT_PALETTE_INDEX, title_rainbow_palette[0]);
     tile_mode2_backup_warp_tiles();
     tile_mode2_set_score(0);
     tile_mode2_set_health(PLAYER_MAX_HEALTH);
@@ -373,23 +316,7 @@ void tile_mode2_init(void) {
 
 void tile_mode2_set_score(uint32_t score)
 {
-    int8_t i;
-
-    if (score > 999999u) {
-        score = 999999u;
-    }
-
-        for (i = (SCORE_DIGITS - 1); i >= 0; --i) {
-            uint8_t digit = (uint8_t)(score % 10u);
-        score /= 10u;
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(SCORE_TILE_X + i),
-            SCORE_TILE_Y,
-            (uint8_t)(SCORE_TILE_INDEX_BASE + digit)
-        );
-    }
+    tile_mode2_write_number(SCORE_TILE_X, SCORE_TILE_Y, score, SCORE_DIGITS);
 }
 
 void tile_mode2_set_hiscore(uint32_t score)
@@ -404,34 +331,9 @@ void tile_mode2_set_hiscore(uint32_t score)
         231, // E
         HUD_SYMBOL_EQUALS_TILE_INDEX,
     };
-    int8_t i;
 
-    if (score > 999999u) {
-        score = 999999u;
-    }
-
-    // tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
-    for (uint8_t t = 0; t < 8; ++t) {
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(HISCORE_TEXT_X + t),
-            HISCORE_TEXT_Y,
-            hiscore_tiles[t]
-        );
-    }
-
-    for (i = (SCORE_DIGITS - 1); i >= 0; --i) {
-        uint8_t digit = (uint8_t)(score % 10u);
-        score /= 10u;
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(HISCORE_VALUE_X + i),
-            HISCORE_VALUE_Y,
-            (uint8_t)(SCORE_TILE_INDEX_BASE + digit)
-        );
-    }
+    tile_mode2_write_tiles(HISCORE_TEXT_X, HISCORE_TEXT_Y, hiscore_tiles, sizeof(hiscore_tiles));
+    tile_mode2_write_number(HISCORE_VALUE_X, HISCORE_VALUE_Y, score, SCORE_DIGITS);
 }
 
 void tile_mode2_set_multiplier(uint8_t multiplier)
@@ -443,20 +345,8 @@ void tile_mode2_set_multiplier(uint8_t multiplier)
         multiplier = 9u;
     }
 
-    tile_mode2_write_tile(
-        XRAM_STARFIELD_HUD_DATA,
-        STARFIELD_HUD_WIDTH,
-        MULTIPLIER_TILE_X,
-        MULTIPLIER_TILE_Y,
-        (uint8_t)(SCORE_TILE_INDEX_BASE + multiplier)
-    );
-    tile_mode2_write_tile(
-        XRAM_STARFIELD_HUD_DATA,
-        STARFIELD_HUD_WIDTH,
-        (uint8_t)(MULTIPLIER_TILE_X + 1u),
-        MULTIPLIER_TILE_Y,
-        HUD_SYMBOL_X_TILE_INDEX
-    );
+    tile_mode2_write_tile(MULTIPLIER_TILE_X, MULTIPLIER_TILE_Y, (uint8_t)(SCORE_TILE_INDEX_BASE + multiplier));
+    tile_mode2_write_tile((uint8_t)(MULTIPLIER_TILE_X + 1u), MULTIPLIER_TILE_Y, HUD_SYMBOL_X_TILE_INDEX);
 }
 
 void tile_mode2_set_paused_banner(bool visible)
@@ -469,31 +359,14 @@ void tile_mode2_set_paused_banner(bool visible)
         231, // E
         230, // D
     };
-    static const uint8_t paused_len = (uint8_t)(sizeof(paused_tiles) / sizeof(paused_tiles[0]));
 
-    if (visible) {
-        tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
-        for (uint8_t i = 0; i < paused_len; ++i) {
-            tile_mode2_write_tile(
-                XRAM_STARFIELD_HUD_DATA,
-                STARFIELD_HUD_WIDTH,
-                (uint8_t)(PAUSED_TEXT_X + i),
-                PAUSED_TEXT_Y,
-                paused_tiles[i]
-            );
-        }
+    if (!visible) {
+        tile_mode2_clear_hud_text(PAUSED_TEXT_X, PAUSED_TEXT_Y, sizeof(paused_tiles));
         return;
     }
 
-    for (uint8_t i = 0; i < paused_len; ++i) {
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(PAUSED_TEXT_X + i),
-            PAUSED_TEXT_Y,
-            0
-        );
-    }
+    tile_mode2_write_hud_palette_entry(HUD_TEXT_PALETTE_INDEX, HUD_TEXT_YELLOW);
+    tile_mode2_write_tiles(PAUSED_TEXT_X, PAUSED_TEXT_Y, paused_tiles, sizeof(paused_tiles));
 }
 
 void tile_mode2_set_level_banner(uint8_t level, bool visible)
@@ -514,23 +387,10 @@ void tile_mode2_set_level_banner(uint8_t level, bool visible)
         return;
     }
 
-    if (level > 99) {
-        level = 99;
-    }
+    tile_mode2_format_number(&level_tiles[6], level, 2);
 
-    level_tiles[6] = (uint8_t)(SCORE_TILE_INDEX_BASE + (level / 10u));
-    level_tiles[7] = (uint8_t)(SCORE_TILE_INDEX_BASE + (level % 10u));
-
-    tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
-    for (uint8_t i = 0; i < LEVEL_TEXT_LEN; ++i) {
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(LEVEL_TEXT_X + i),
-            LEVEL_TEXT_Y,
-            level_tiles[i]
-        );
-    }
+    tile_mode2_write_hud_palette_entry(HUD_TEXT_PALETTE_INDEX, HUD_TEXT_YELLOW);
+    tile_mode2_write_tiles(LEVEL_TEXT_X, LEVEL_TEXT_Y, level_tiles, LEVEL_TEXT_LEN);
 }
 
 void tile_mode2_set_end_banner(bool victory)
@@ -544,22 +404,16 @@ void tile_mode2_set_end_banner(bool victory)
         235, // I
         240, // N
     };
-
-    uint8_t x = 16u;
-    uint8_t y = 14u;
-    uint8_t len = 7u;
+    const uint8_t x = 16u;
+    const uint8_t y = 14u;
 
     tile_mode2_clear_hud_text(15u, y, 10u);
     if (!victory) {
         return;
     }
 
-    tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
-
-    for (uint8_t i = 0; i < len; ++i) {
-        uint8_t tile_index = you_win_tiles[i];
-        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, tile_index);
-    }
+    tile_mode2_write_hud_palette_entry(HUD_TEXT_PALETTE_INDEX, HUD_TEXT_YELLOW);
+    tile_mode2_write_tiles(x, y, you_win_tiles, sizeof(you_win_tiles));
 }
 
 void tile_mode2_set_level_complete_banner(bool visible)
@@ -586,16 +440,8 @@ void tile_mode2_set_level_complete_banner(bool visible)
         return;
     }
 
-    tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
-    for (uint8_t i = 0; i < LEVEL_COMPLETE_TEXT_LEN; ++i) {
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(LEVEL_COMPLETE_TEXT_X + i),
-            LEVEL_COMPLETE_TEXT_Y,
-            level_complete_tiles[i]
-        );
-    }
+    tile_mode2_write_hud_palette_entry(HUD_TEXT_PALETTE_INDEX, HUD_TEXT_YELLOW);
+    tile_mode2_write_tiles(LEVEL_COMPLETE_TEXT_X, LEVEL_COMPLETE_TEXT_Y, level_complete_tiles, LEVEL_COMPLETE_TEXT_LEN);
 }
 
 void tile_mode2_set_level_failed_banner(bool visible)
@@ -618,14 +464,12 @@ void tile_mode2_set_level_failed_banner(bool visible)
     const uint8_t y = 14u;
 
     if (!visible) {
-        tile_mode2_clear_hud_text(x, y, 12u);
+        tile_mode2_clear_hud_text(x, y, sizeof(level_failed_tiles));
         return;
     }
 
-    tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
-    for (uint8_t i = 0; i < 12u; ++i) {
-        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(x + i), y, level_failed_tiles[i]);
-    }
+    tile_mode2_write_hud_palette_entry(HUD_TEXT_PALETTE_INDEX, HUD_TEXT_YELLOW);
+    tile_mode2_write_tiles(x, y, level_failed_tiles, sizeof(level_failed_tiles));
 }
 
 void tile_mode2_show_press_button_prompt(uint8_t y)
@@ -650,15 +494,7 @@ void tile_mode2_show_press_button_prompt(uint8_t y)
     }
     tile_mode2_hide_press_button_prompt();
 
-    for (uint8_t i = 0; i < PRESS_BUTTON_TEXT_LEN; ++i) {
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(PRESS_BUTTON_TEXT_X + i),
-            y,
-            press_button_tiles[i]
-        );
-    }
+    tile_mode2_write_tiles(PRESS_BUTTON_TEXT_X, y, press_button_tiles, PRESS_BUTTON_TEXT_LEN);
     press_button_prompt_y = y;
 }
 
@@ -681,7 +517,7 @@ void tile_mode2_start_gameplay_transition(void)
     transition_to_gameplay = true;
 }
 
-void tile_mode2_start_game_over_transition(void)
+void tile_mode2_start_warp_transition(void)
 {
     bg_scroll_speed_half = BG_SCROLL_SPEED_HALF_PX;
     fg_scroll_target_half = FG_SCROLL_SPEED_HALF_PX;
@@ -694,45 +530,10 @@ void tile_mode2_start_game_over_transition(void)
     }
 }
 
-void tile_mode2_start_level_bonus_transition(void)
+void tile_mode2_restore_hud(void)
 {
-    bg_scroll_speed_half = BG_SCROLL_SPEED_HALF_PX;
-    fg_scroll_target_half = FG_SCROLL_SPEED_HALF_PX;
-    fg_slowdown_tick = 0;
-    gameplay_transition_active = true;
-    transition_to_gameplay = false;
-    if (warp_tiles_replaced) {
-        tile_mode2_restore_warp_tiles();
-        warp_tiles_replaced = false;
-    }
-}
-
-bool tile_mode2_restore_hud_from_rom(void)
-{
-    int fd;
-    int total;
-    static uint8_t hud_data[STARFIELD_HUD_SIZE];
-
-    fd = open("ROM:StarFields_HUD_map.bin", O_RDONLY);
-    if (fd < 0) {
-        return false;
-    }
-
-    total = read(fd, hud_data, STARFIELD_HUD_SIZE);
-    close(fd);
-
-    if (total != STARFIELD_HUD_SIZE) {
-        return false;
-    }
-
-    RIA.addr0 = XRAM_STARFIELD_HUD_DATA;
-    RIA.step0 = 1;
-    for (unsigned i = 0; i < STARFIELD_HUD_SIZE; ++i) {
-        RIA.rw0 = hud_data[i];
-    }
-
-    tile_mode2_write_hud_palette_entry(2, title_rainbow_palette[title_palette_phase]);
-    return true;
+    xram_move(XRAM_STARFIELD_HUD_DATA, XRAM_STARFIELD_HUD_DEFAULT, STARFIELD_HUD_SIZE);
+    tile_mode2_write_hud_palette_entry(HUD_TEXT_PALETTE_INDEX, title_rainbow_palette[title_palette_phase]);
 }
 
 void tile_mode2_update_title_palette(void)
@@ -746,54 +547,21 @@ void tile_mode2_update_title_palette(void)
     title_palette_phase = (uint8_t)((title_palette_phase + 1) %
         (sizeof(title_rainbow_palette) / sizeof(title_rainbow_palette[0])));
 
-    tile_mode2_write_hud_palette_entry(2, title_rainbow_palette[title_palette_phase]);
+    tile_mode2_write_hud_palette_entry(HUD_TEXT_PALETTE_INDEX, title_rainbow_palette[title_palette_phase]);
 }
 
 void tile_mode2_set_health(uint8_t health)
 {
-    for (uint8_t i = 0; i < HEALTH_BAR_TILE_COUNT; ++i) {
-        int16_t segment_health = (int16_t)health - (int16_t)(i * HEALTH_PER_BAR_TILE);
-        uint8_t fill;
-        uint8_t tile_index;
-
-        if (segment_health <= 0) {
-            fill = 0;
-        } else if (segment_health >= HEALTH_PER_BAR_TILE) {
-            fill = HEALTH_PER_BAR_TILE;
-        } else {
-            fill = (uint8_t)segment_health;
-        }
-
-        tile_index = (uint8_t)(HEALTH_BAR_TILE_EMPTY_INDEX - fill);
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(HEALTH_BAR_TILE_X + i),
-            HEALTH_BAR_TILE_Y,
-            tile_index
-        );
-    }
+    tile_mode2_write_bar(HEALTH_BAR_TILE_X, HEALTH_BAR_TILE_Y, health, HEALTH_BAR_TILE_EMPTY_INDEX);
 }
 
 static uint8_t tile_mode2_lives_slot_x(uint8_t slot)
 {
-    if (slot == 0u) {
-        return LIVES_SLOT_0_X;
-    }
-    if (slot == 1u) {
-        return LIVES_SLOT_1_X;
-    }
-    return LIVES_SLOT_2_X;
+    return (uint8_t)(LIVES_SLOT_0_X + 2u * slot);
 }
 
 void tile_mode2_set_lives(uint8_t extra_lives)
 {
-    uint8_t clamped_lives = extra_lives;
-
-    if (clamped_lives > LIVES_MAX_DISPLAY) {
-        clamped_lives = LIVES_MAX_DISPLAY;
-    }
-
     // Any HUD redraw of the authoritative lives state (scene transitions,
     // resets) supersedes an in-progress flash rather than leaving it to
     // blink over a screen it no longer describes -- genuine gain/loss
@@ -801,29 +569,9 @@ void tile_mode2_set_lives(uint8_t extra_lives)
     // after calling this.
     lives_flash_timer = 0;
 
-    tile_mode2_write_tile(
-        XRAM_STARFIELD_HUD_DATA,
-        STARFIELD_HUD_WIDTH,
-        LIVES_SLOT_0_X,
-        LIVES_SLOT_Y,
-        (clamped_lives >= 1u) ? LIVES_ICON_TILE_INDEX : 0
-    );
-
-    tile_mode2_write_tile(
-        XRAM_STARFIELD_HUD_DATA,
-        STARFIELD_HUD_WIDTH,
-        LIVES_SLOT_1_X,
-        LIVES_SLOT_Y,
-        (clamped_lives >= 2u) ? LIVES_ICON_TILE_INDEX : 0
-    );
-
-    tile_mode2_write_tile(
-        XRAM_STARFIELD_HUD_DATA,
-        STARFIELD_HUD_WIDTH,
-        LIVES_SLOT_2_X,
-        LIVES_SLOT_Y,
-        (clamped_lives >= 3u) ? LIVES_ICON_TILE_INDEX : 0
-    );
+    for (uint8_t slot = 0; slot < LIVES_MAX_DISPLAY; ++slot) {
+        tile_mode2_write_tile(tile_mode2_lives_slot_x(slot), LIVES_SLOT_Y, (extra_lives > slot) ? LIVES_ICON_TILE_INDEX : 0);
+    }
 }
 
 // Call right after tile_mode2_set_lives() at a genuine gain/loss event
@@ -865,50 +613,22 @@ void tile_mode2_update_lives_fx(void)
         ? (uint8_t)((steady_tile == 0u) ? LIVES_ICON_TILE_INDEX : 0u)
         : steady_tile;
 
-    tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, slot_x, LIVES_SLOT_Y, tile_index);
+    tile_mode2_write_tile(slot_x, LIVES_SLOT_Y, tile_index);
 
     if (lives_flash_timer == 0u) {
         // Land exactly on the steady state so we never get stuck mid-blink.
-        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, slot_x, LIVES_SLOT_Y, steady_tile);
+        tile_mode2_write_tile(slot_x, LIVES_SLOT_Y, steady_tile);
     }
 }
 
 void tile_mode2_set_speed_pickups(uint8_t count)
 {
-    uint8_t clamped = count;
-
-    if (clamped > SPEED_PICKUP_MAX_DISPLAY) {
-        clamped = SPEED_PICKUP_MAX_DISPLAY;
-    }
-
-    for (uint8_t i = 0; i < SPEED_PICKUP_MAX_DISPLAY; ++i) {
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(SPEED_PICKUP_X_START + i),
-            SPEED_PICKUP_Y,
-            (i < clamped) ? SPEED_PICKUP_TILE_INDEX : 0
-        );
-    }
+    tile_mode2_write_pickups(SPEED_PICKUP_X_START, SPEED_PICKUP_Y, SPEED_PICKUP_TILE_INDEX, count, SPEED_PICKUP_MAX_DISPLAY);
 }
 
 void tile_mode2_set_power_pickups(uint8_t count)
 {
-    uint8_t clamped = count;
-
-    if (clamped > POWER_PICKUP_MAX_DISPLAY) {
-        clamped = POWER_PICKUP_MAX_DISPLAY;
-    }
-
-    for (uint8_t i = 0; i < POWER_PICKUP_MAX_DISPLAY; ++i) {
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(POWER_PICKUP_X_START + i),
-            POWER_PICKUP_Y,
-            (i < clamped) ? POWER_PICKUP_TILE_INDEX : 0
-        );
-    }
+    tile_mode2_write_pickups(POWER_PICKUP_X_START, POWER_PICKUP_Y, POWER_PICKUP_TILE_INDEX, count, POWER_PICKUP_MAX_DISPLAY);
 }
 
 void tile_mode2_update_health_fx(bool damage_flash_active, bool low_health)
@@ -931,87 +651,47 @@ void tile_mode2_update_health_fx(bool damage_flash_active, bool low_health)
 
     if (desired_color != current_health_palette_color) {
         current_health_palette_color = desired_color;
-        tile_mode2_write_hud_palette_entry(10, desired_color);
+        tile_mode2_write_hud_palette_entry(HUD_HEALTH_PALETTE_INDEX, desired_color);
     }
 }
 
 void tile_mode2_set_boss_hud_visible(bool visible)
 {
-    static const uint8_t boss_tiles[BOSS_LABEL_TEXT_LEN] = {
-        228, // B
-        241, // O
-        245, // S
-        245, // S
-    };
-
     if (!visible) {
         tile_mode2_clear_hud_text(BOSS_HUD_LABEL_X, BOSS_HUD_LABEL_Y, BOSS_LABEL_TEXT_LEN);
         tile_mode2_clear_hud_text(BOSS_HUD_HEALTH_X, BOSS_HUD_HEALTH_Y, HEALTH_BAR_TILE_COUNT);
-        tile_mode2_write_hud_palette_entry(12, tile_hud_palette[12]);
+        tile_mode2_write_hud_palette_entry(HUD_BOSS_HEALTH_PALETTE_INDEX, hud_boss_health_default_color);
         return;
     }
 
-    tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
-    for (uint8_t i = 0; i < BOSS_LABEL_TEXT_LEN; ++i) {
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(BOSS_HUD_LABEL_X + i),
-            BOSS_HUD_LABEL_Y,
-            boss_tiles[i]
-        );
-    }
+    tile_mode2_write_hud_palette_entry(HUD_TEXT_PALETTE_INDEX, HUD_TEXT_YELLOW);
+    tile_mode2_write_tiles(BOSS_HUD_LABEL_X, BOSS_HUD_LABEL_Y, boss_tiles, BOSS_LABEL_TEXT_LEN);
 }
 
 void tile_mode2_set_boss_health(uint8_t health)
 {
     uint16_t boss_color = (health <= BOSS_LOW_HEALTH_THRESHOLD) ? boss_health_low_color : boss_health_good_color;
 
-    tile_mode2_write_hud_palette_entry(12, boss_color);
-
-    for (uint8_t i = 0; i < HEALTH_BAR_TILE_COUNT; ++i) {
-        int16_t segment_health = (int16_t)health - (int16_t)(i * HEALTH_PER_BAR_TILE);
-        uint8_t fill;
-        uint8_t tile_index;
-
-        if (segment_health <= 0) {
-            fill = 0;
-        } else if (segment_health >= HEALTH_PER_BAR_TILE) {
-            fill = HEALTH_PER_BAR_TILE;
-        } else {
-            fill = (uint8_t)segment_health;
-        }
-
-        tile_index = (uint8_t)(BOSS_HEALTH_TILE_EMPTY_INDEX - fill);
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(BOSS_HUD_HEALTH_X + i),
-            BOSS_HUD_HEALTH_Y,
-            tile_index
-        );
-    }
+    tile_mode2_write_hud_palette_entry(HUD_BOSS_HEALTH_PALETTE_INDEX, boss_color);
+    tile_mode2_write_bar(BOSS_HUD_HEALTH_X, BOSS_HUD_HEALTH_Y, health, BOSS_HEALTH_TILE_EMPTY_INDEX);
 }
 
 void tile_mode2_clear_level_bonus(void)
 {
-    tile_mode2_clear_bonus_table_area();
+    for (uint8_t y = BONUS_TABLE_Y; y < (BONUS_TABLE_Y + BONUS_TABLE_ROWS); ++y) {
+        tile_mode2_clear_hud_text(BONUS_TABLE_X, y, BONUS_TABLE_WIDTH);
+    }
 }
 
 void tile_mode2_begin_level_bonus(uint8_t level, uint8_t multiplier)
 {
     tile_mode2_clear_level_bonus();
 
-    tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 2), BONUS_TABLE_Y, level);
-    tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 7), BONUS_TABLE_Y, multiplier);
+    tile_mode2_write_number((uint8_t)(BONUS_TABLE_X + 2), BONUS_TABLE_Y, level, 2);
+    tile_mode2_write_number((uint8_t)(BONUS_TABLE_X + 7), BONUS_TABLE_Y, multiplier, 2);
 
     for (uint8_t type = 0; type < ENEMY_TYPE_COUNT; ++type) {
-        uint8_t row_y = tile_mode2_bonus_row_y(type);
-        tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 3), row_y, 0);
-        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 5), row_y, HUD_SYMBOL_X_TILE_INDEX);
-        tile_mode2_write_three_digits((uint8_t)(BONUS_TABLE_X + 6), row_y, 0);
-        tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 9), row_y, HUD_SYMBOL_EQUALS_TILE_INDEX);
-        tile_mode2_write_five_digits((uint8_t)(BONUS_TABLE_X + 10), row_y, 0);
+        tile_mode2_set_bonus_row(type, 0, 0, 0);
     }
 
     tile_mode2_set_bonus_boss_row(0);
@@ -1021,48 +701,31 @@ void tile_mode2_begin_level_bonus(uint8_t level, uint8_t multiplier)
 
 void tile_mode2_set_bonus_row(uint8_t enemy_type, uint16_t kills, uint16_t points_each, uint16_t subtotal)
 {
-    uint8_t row_y;
+    uint8_t tiles[12];
 
     if (enemy_type >= ENEMY_TYPE_COUNT) {
         return;
     }
 
-    row_y = tile_mode2_bonus_row_y(enemy_type);
-
-    tile_mode2_write_two_digits((uint8_t)(BONUS_TABLE_X + 3), row_y, kills);
-    tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 5), row_y, HUD_SYMBOL_X_TILE_INDEX);
-    tile_mode2_write_three_digits((uint8_t)(BONUS_TABLE_X + 6), row_y, points_each);
-    tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 9), row_y, HUD_SYMBOL_EQUALS_TILE_INDEX);
-    tile_mode2_write_five_digits((uint8_t)(BONUS_TABLE_X + 10), row_y, subtotal);
+    tile_mode2_format_number(&tiles[0], kills, 2);
+    tiles[2] = HUD_SYMBOL_X_TILE_INDEX;
+    tile_mode2_format_number(&tiles[3], points_each, 3);
+    tiles[6] = HUD_SYMBOL_EQUALS_TILE_INDEX;
+    tile_mode2_format_number(&tiles[7], subtotal, 5);
+    tile_mode2_write_tiles((uint8_t)(BONUS_TABLE_X + 3), tile_mode2_bonus_row_y(enemy_type), tiles, sizeof(tiles));
 }
 
 void tile_mode2_set_bonus_boss_row(uint16_t boss_points)
 {
-    static const uint8_t boss_tiles[4] = {
-        228, // B
-        241, // O
-        245, // S
-        245, // S
-    };
-
-    tile_mode2_write_hud_palette_entry(2, HUD_TEXT_YELLOW);
-    for (uint8_t i = 0; i < 4; ++i) {
-        tile_mode2_write_tile(
-            XRAM_STARFIELD_HUD_DATA,
-            STARFIELD_HUD_WIDTH,
-            (uint8_t)(BONUS_TABLE_X + i),
-            BONUS_BOSS_ROW_Y,
-            boss_tiles[i]
-        );
-    }
-
-    tile_mode2_write_tile(XRAM_STARFIELD_HUD_DATA, STARFIELD_HUD_WIDTH, (uint8_t)(BONUS_TABLE_X + 4), BONUS_BOSS_ROW_Y, 0);
-    tile_mode2_write_five_digits((uint8_t)(BONUS_TABLE_X + 10), BONUS_BOSS_ROW_Y, boss_points);
+    tile_mode2_write_hud_palette_entry(HUD_TEXT_PALETTE_INDEX, HUD_TEXT_YELLOW);
+    tile_mode2_write_tiles(BONUS_TABLE_X, BONUS_BOSS_ROW_Y, boss_tiles, BOSS_LABEL_TEXT_LEN);
+    tile_mode2_write_tile((uint8_t)(BONUS_TABLE_X + 4), BONUS_BOSS_ROW_Y, 0);
+    tile_mode2_write_number((uint8_t)(BONUS_TABLE_X + 10), BONUS_BOSS_ROW_Y, boss_points, 5);
 }
 
 void tile_mode2_set_bonus_pending_total(uint32_t pending_total)
 {
-    tile_mode2_write_five_digits((uint8_t)(BONUS_TABLE_X + 10), BONUS_TOTAL_Y, pending_total);
+    tile_mode2_write_number((uint8_t)(BONUS_TABLE_X + 10), BONUS_TOTAL_Y, pending_total, 5);
 }
 
 int16_t tile_mode2_get_bonus_icon_target_x(void)
@@ -1079,32 +742,8 @@ int16_t tile_mode2_get_bonus_icon_target_y(uint8_t enemy_type)
     return (int16_t)(tile_mode2_bonus_row_y(enemy_type) * 8);
 }
 
-void tile_mode2_render_level_bonus(uint8_t level, const uint16_t *kills, uint8_t multiplier)
+void tile_mode2_update_scroll(void)
 {
-    uint32_t total_bonus = 0;
-
-    tile_mode2_begin_level_bonus(level, multiplier);
-
-    for (uint8_t type = 0; type < ENEMY_TYPE_COUNT; ++type) {
-        uint16_t base_points = (uint16_t)(10u + ((uint16_t)type * 5u));
-        uint16_t points_each;
-        uint16_t subtotal;
-
-        if (base_points > 40u) {
-            base_points = 40u;
-        }
-
-        points_each = (uint16_t)(base_points * multiplier);
-        subtotal = (uint16_t)(kills[type] * points_each);
-        total_bonus += subtotal;
-
-        tile_mode2_set_bonus_row(type, kills[type], points_each, subtotal);
-    }
-
-    tile_mode2_set_bonus_pending_total(total_bonus);
-}
-
-void tile_mode2_update_scroll(void) {
     if (gameplay_transition_active && fg_scroll_speed_half != fg_scroll_target_half) {
         fg_slowdown_tick = (uint8_t)(fg_slowdown_tick + 1);
         if (fg_slowdown_tick >= FG_SLOWDOWN_STEP_FRAMES) {
@@ -1144,6 +783,6 @@ void tile_mode2_update_scroll(void) {
         fg_scroll_y_half = (int16_t)(fg_scroll_y_half - TILE_SCROLL_WRAP_HALF_PX);
     }
 
-    xram0_struct_set(XRAM_TILE_BG_CONFIG, mode2_config_t, y_pos_px, (int16_t)(bg_scroll_y_half / 2));
-    xram0_struct_set(XRAM_TILE_FG_CONFIG, mode2_config_t, y_pos_px, (int16_t)(fg_scroll_y_half / 2));
+    xram0_poke16(XRAM_TILE_BG_CONFIG + offsetof(mode2_config_t, y_pos_px), (uint16_t)(bg_scroll_y_half / 2));
+    xram0_poke16(XRAM_TILE_FG_CONFIG + offsetof(mode2_config_t, y_pos_px), (uint16_t)(fg_scroll_y_half / 2));
 }

@@ -5,7 +5,7 @@
 
 // Palette extracted from Sprites/StarFields_tiles.png
 static const uint16_t starfields_tiles_4bpp[16] = {
-    0x0020,
+    0x0000,
     0xA820,
     0x0560,
     0xAD60,

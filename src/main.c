@@ -32,8 +32,6 @@ static bool init_graphics(void)
     return true;
 }
 
-uint8_t vsync_last = 0;
-
 int main(void)
 {
 
@@ -52,10 +50,12 @@ int main(void)
     gameplay_init();
 
     // Main loop
+    uint8_t vsync_last = 0;
     while (true) {
         // 1. SYNC
-        if (RIA.vsync == vsync_last) continue;
-        vsync_last = RIA.vsync;
+        uint8_t vsync = ria_vsync();
+        if (vsync == vsync_last) continue;
+        vsync_last = vsync;
 
         // 2. INPUT
         handle_input();

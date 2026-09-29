@@ -21,12 +21,8 @@ bool player_controller_can_take_damage(void);
 bool player_controller_is_damage_flash_active(void);
 bool player_controller_is_low_health(void);
 
-// Speed level: each step is 0.25 px/frame. Default is 5 (1.25 px/frame);
-// each speed pickup adds one, up to 9 (2.25 px/frame).
-int  player_controller_get_speed(void);
 void player_controller_apply_speed_pickup(void);
 void player_controller_apply_power_pickup(void);
-uint8_t player_controller_get_fire_rate(void);
 uint8_t player_controller_get_speed_pickup_count(void);
 uint8_t player_controller_get_power_pickup_count(void);
 

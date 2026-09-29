@@ -108,11 +108,6 @@ void player_controller_reset_for_new_run(void)
     sprite_mode5_set_position((int16_t)(player_x_q8 >> Q8_SHIFT), (int16_t)(player_y_q8 >> Q8_SHIFT));
 }
 
-int player_controller_get_speed(void)
-{
-    return player_speed;
-}
-
 void player_controller_apply_speed_pickup(void)
 {
     if (player_speed < PLAYER_SPEED_MAX) {
@@ -125,11 +120,6 @@ void player_controller_apply_power_pickup(void)
     if (player_fire_rate > PLAYER_FIRE_RATE_MIN) {
         player_fire_rate--;
     }
-}
-
-uint8_t player_controller_get_fire_rate(void)
-{
-    return player_fire_rate;
 }
 
 uint8_t player_controller_get_speed_pickup_count(void)

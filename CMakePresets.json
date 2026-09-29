@@ -16,7 +16,7 @@
         {
             "name": "llvm-mos/Debug",
             "displayName": "llvm-mos/Debug",
-            "description": "Build with llvm-mos. Debug information, needed for source-level debugging.",
+            "description": "llvm-mos, with debug information",
             "inherits": "base",
             "binaryDir": "${sourceDir}/build/llvm-mos/debug",
             "cacheVariables": {
@@ -27,7 +27,7 @@
         {
             "name": "llvm-mos/Release",
             "displayName": "llvm-mos/Release",
-            "description": "The same, optimized, for the ROM you ship.",
+            "description": "llvm-mos, optimized",
             "inherits": "base",
             "binaryDir": "${sourceDir}/build/llvm-mos/release",
             "cacheVariables": {
