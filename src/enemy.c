@@ -601,24 +601,32 @@ static bool enemy_fire_aimed_y_offset(uint8_t slot, int16_t speed_q8, int16_t ta
     return projectile_fire_enemy(bullet_x, bullet_y, vx_q8, vy_q8, ENEMY_PROJECTILE_FRAME);
 }
 
-static bool enemy_fire_directional(uint8_t slot, int8_t dir_x, int8_t dir_y, int16_t speed_q8)
+_Static_assert(BULLET_MEDIUM_SPEED_Q8 % 8 == 0 && BULLET_FAST_SPEED_Q8 % 8 == 0,
+               "The barrage divides the bullet speeds by 8 at compile time.");
+
+// Nothing frees a projectile slot during the barrage, so the first shot that
+// fails means the rest would fail too.
+static void enemy_fire_big_barrage(uint8_t slot)
 {
     int16_t bullet_x;
     int16_t bullet_y;
-    int16_t vx_q8 = (int16_t)((dir_x * speed_q8) / 8);
-    int16_t vy_q8 = (int16_t)((dir_y * speed_q8) / 8);
 
     enemy_get_bullet_origin(slot, &bullet_x, &bullet_y);
-    return projectile_fire_enemy(bullet_x, bullet_y, vx_q8, vy_q8, ENEMY_PROJECTILE_FRAME);
-}
-
-static void enemy_fire_big_barrage(uint8_t slot)
-{
     for (uint8_t i = 0; i < 16; ++i) {
-        enemy_fire_directional(slot, spiral_dirs[i][0], spiral_dirs[i][1], BULLET_MEDIUM_SPEED_Q8);
+        if (!projectile_fire_enemy(bullet_x, bullet_y,
+                                   (int16_t)(spiral_dirs[i][0] * (BULLET_MEDIUM_SPEED_Q8 / 8)),
+                                   (int16_t)(spiral_dirs[i][1] * (BULLET_MEDIUM_SPEED_Q8 / 8)),
+                                   ENEMY_PROJECTILE_FRAME)) {
+            return;
+        }
     }
     for (uint8_t i = 0; i < 8; ++i) {
-        enemy_fire_directional(slot, radial_dirs[i][0], radial_dirs[i][1], BULLET_FAST_SPEED_Q8);
+        if (!projectile_fire_enemy(bullet_x, bullet_y,
+                                   (int16_t)(radial_dirs[i][0] * (BULLET_FAST_SPEED_Q8 / 8)),
+                                   (int16_t)(radial_dirs[i][1] * (BULLET_FAST_SPEED_Q8 / 8)),
+                                   ENEMY_PROJECTILE_FRAME)) {
+            return;
+        }
     }
 }
 
@@ -757,9 +765,9 @@ static void enemy_enqueue_type(uint8_t type, uint8_t count)
     }
 }
 
-static uint8_t enemy_find_free_slot(void)
+static uint8_t enemy_find_free_slot(uint8_t slot_end)
 {
-    for (uint8_t i = 0; i < MAX_ENEMIES; ++i) {
+    for (uint8_t i = 0; i < slot_end; ++i) {
         if (!enemies[i].active) {
             return i;
         }
@@ -1571,13 +1579,13 @@ void enemy_update(void)
             if (wave_timer > 0) {
                 wave_timer--;
             } else {
-                uint8_t free_slot = enemy_find_free_slot();
+                uint8_t free_slot = enemy_find_free_slot(MAX_ENEMIES);
 
                 if (wave_spawned < wave_spawn_count && wave_spawn_types[wave_spawned] == 5) {
                     bool spawned_any = false;
 
                     while (wave_spawned < wave_spawn_count && wave_spawn_types[wave_spawned] == 5) {
-                        free_slot = enemy_find_free_slot();
+                        free_slot = enemy_find_free_slot(MAX_ENEMIES);
                         if (free_slot >= MAX_ENEMIES) {
                             break;
                         }
@@ -1861,7 +1869,8 @@ void enemy_spawn_for_boss(uint8_t enemy_type, uint8_t wave_slot)
         }
     }
 
-    uint8_t free_slot = enemy_find_free_slot();
+    // Runs only during a boss fight. The boss sprites use the slots from BOSS_SPRITE_SLOT_FIRST up.
+    uint8_t free_slot = enemy_find_free_slot(BOSS_SPRITE_SLOT_FIRST);
     if (free_slot < MAX_ENEMIES) {
         spawn_enemy(free_slot, enemy_type, wave_slot);
     }

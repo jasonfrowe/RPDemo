@@ -21,5 +21,6 @@ void sprite_mode5_show_boss(int16_t x, int16_t y, uint8_t frame_set_base);
 void sprite_mode5_hide_boss(void);
 void sprite_mode5_set_boss_palette_active(bool active);
 void sprite_mode5_set_boss_weakspot_flash(bool active);
+void sprite_mode5_commit(void);
 
 #endif // SPRITE_MODE5_H

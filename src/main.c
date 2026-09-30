@@ -27,7 +27,7 @@ static bool init_graphics(void)
     sprite_mode5_init_enemies();
     projectile_init();
     enemy_init();
-    score_init(); 
+    score_init();
 
     return true;
 }
@@ -57,7 +57,11 @@ int main(void)
         if (vsync == vsync_last) continue;
         vsync_last = vsync;
 
-        // 2. INPUT
+        // 2. COMMIT
+        sprite_mode5_commit();
+        tile_mode2_commit();
+
+        // 3. INPUT
         handle_input();
 
         gameplay_frame(is_action_pressed(ACTION_START), is_action_pressed(ACTION_PAUSE));

@@ -14,7 +14,6 @@ static uint8_t fg_slowdown_tick = 0;
 static bool gameplay_transition_active = false;
 static bool transition_to_gameplay = false;
 static bool warp_tiles_replaced = false;
-static uint16_t current_health_palette_color = 0;
 static uint8_t health_flash_tick = 0;
 static uint8_t lives_flash_slot = 0;
 static bool lives_flash_steady_is_icon = false;
@@ -92,6 +91,16 @@ static uint8_t lives_flash_tick = 0;
 
 static tile_8x8_t warp_tile_backup[WARP_TILE_COUNT];
 
+// The HUD helpers change only these RAM copies. tile_mode2_commit() writes them
+// to XRAM right after VSYNC, so a HUD tile or color changes only between frames
+// unless the pass before it overran.
+static uint8_t hud_map[STARFIELD_HUD_HEIGHT][STARFIELD_HUD_WIDTH];
+static uint8_t hud_dirty_first = STARFIELD_HUD_HEIGHT;
+static uint8_t hud_dirty_last = 0;
+static uint16_t hud_colors[1 << 4];
+static bool hud_colors_dirty = false;
+static bool warp_tiles_shown = false;
+
 static uint8_t title_palette_tick = 0;
 static uint8_t title_palette_phase = 0;
 static uint8_t press_button_prompt_y = PRESS_BUTTON_HIDDEN;
@@ -122,34 +131,40 @@ static const uint16_t boss_health_low_color = COLOR_FROM_RGB8(255, 32, 32) | COL
 static uint16_t hud_health_default_color;
 static uint16_t hud_boss_health_default_color;
 
-static uint16_t tile_mode2_read_hud_palette_entry(uint8_t index)
-{
-    return xram0_peek16(XRAM_TILE_HUD_PALETTE + (unsigned)index * sizeof(uint16_t));
-}
-
 static void tile_mode2_write_hud_palette_entry(uint8_t index, uint16_t color)
 {
-    xram0_poke16(XRAM_TILE_HUD_PALETTE + (unsigned)index * sizeof(uint16_t), color);
+    if (hud_colors[index] != color) {
+        hud_colors[index] = color;
+        hud_colors_dirty = true;
+    }
 }
 
-static unsigned tile_mode2_hud_addr(uint8_t x, uint8_t y)
+static void tile_mode2_mark_hud_row(uint8_t y)
 {
-    return XRAM_STARFIELD_HUD_DATA + (unsigned)y * STARFIELD_HUD_WIDTH + x;
+    if (y < hud_dirty_first) {
+        hud_dirty_first = y;
+    }
+    if (y > hud_dirty_last) {
+        hud_dirty_last = y;
+    }
 }
 
 static void tile_mode2_write_tile(uint8_t x, uint8_t y, uint8_t tile_index)
 {
-    xram0_poke8(tile_mode2_hud_addr(x, y), tile_index);
+    hud_map[y][x] = tile_index;
+    tile_mode2_mark_hud_row(y);
 }
 
 static void tile_mode2_write_tiles(uint8_t x, uint8_t y, const uint8_t *tiles, uint8_t len)
 {
-    xram0_write(tile_mode2_hud_addr(x, y), tiles, len);
+    memcpy(&hud_map[y][x], tiles, len);
+    tile_mode2_mark_hud_row(y);
 }
 
 static void tile_mode2_clear_hud_text(uint8_t x, uint8_t y, uint8_t len)
 {
-    xram0_set(tile_mode2_hud_addr(x, y), 0, len);
+    memset(&hud_map[y][x], 0, len);
+    tile_mode2_mark_hud_row(y);
 }
 
 static void tile_mode2_format_number(uint8_t *tiles, uint32_t value, uint8_t digits)
@@ -224,18 +239,6 @@ static void tile_mode2_backup_warp_tiles(void)
     xram0_read(warp_tile_backup, tile_mode2_tile_addr(WARP_TILE_INDEX), sizeof(warp_tile_backup));
 }
 
-static void tile_mode2_restore_warp_tiles(void)
-{
-    xram0_write(tile_mode2_tile_addr(WARP_TILE_INDEX), warp_tile_backup, sizeof(warp_tile_backup));
-}
-
-static void tile_mode2_replace_warp_tiles(void)
-{
-    xram_move(tile_mode2_tile_addr(WARP_TILE_INDEX),
-              tile_mode2_tile_addr(WARP_TILE_REPLACEMENT_INDEX),
-              sizeof(warp_tile_backup));
-}
-
 void tile_mode2_init(void)
 {
     static const mode2_config_t bg_config = {
@@ -281,12 +284,13 @@ void tile_mode2_init(void)
     gameplay_transition_active = false;
     transition_to_gameplay = false;
     warp_tiles_replaced = false;
-    current_health_palette_color = 0;
     health_flash_tick = 0;
     title_palette_tick = 0;
     title_palette_phase = 0;
-    hud_health_default_color = tile_mode2_read_hud_palette_entry(HUD_HEALTH_PALETTE_INDEX);
-    hud_boss_health_default_color = tile_mode2_read_hud_palette_entry(HUD_BOSS_HEALTH_PALETTE_INDEX);
+    xram0_read(hud_colors, XRAM_TILE_HUD_PALETTE, sizeof(hud_colors));
+    hud_health_default_color = hud_colors[HUD_HEALTH_PALETTE_INDEX];
+    hud_boss_health_default_color = hud_colors[HUD_BOSS_HEALTH_PALETTE_INDEX];
+    xram0_read(hud_map, XRAM_STARFIELD_HUD_DATA, sizeof(hud_map));
 
     xram0_write(XRAM_TILE_BG_CONFIG, &bg_config, sizeof(bg_config));
     // Mode 2 args: OPTIONS, CONFIG, PLANE, BEGIN, END
@@ -312,6 +316,7 @@ void tile_mode2_init(void)
     tile_mode2_set_score(0);
     tile_mode2_set_health(PLAYER_MAX_HEALTH);
     tile_mode2_update_health_fx(false, false);
+    tile_mode2_commit();
 }
 
 void tile_mode2_set_score(uint32_t score)
@@ -524,15 +529,14 @@ void tile_mode2_start_warp_transition(void)
     fg_slowdown_tick = 0;
     gameplay_transition_active = true;
     transition_to_gameplay = false;
-    if (warp_tiles_replaced) {
-        tile_mode2_restore_warp_tiles();
-        warp_tiles_replaced = false;
-    }
+    warp_tiles_replaced = false;
 }
 
 void tile_mode2_restore_hud(void)
 {
-    xram_move(XRAM_STARFIELD_HUD_DATA, XRAM_STARFIELD_HUD_DEFAULT, STARFIELD_HUD_SIZE);
+    xram0_read(hud_map, XRAM_STARFIELD_HUD_DEFAULT, sizeof(hud_map));
+    hud_dirty_first = 0;
+    hud_dirty_last = STARFIELD_HUD_HEIGHT - 1;
     tile_mode2_write_hud_palette_entry(HUD_TEXT_PALETTE_INDEX, title_rainbow_palette[title_palette_phase]);
 }
 
@@ -649,10 +653,7 @@ void tile_mode2_update_health_fx(bool damage_flash_active, bool low_health)
         desired_color = low_health ? hud_health_low_color : hud_health_default_color;
     }
 
-    if (desired_color != current_health_palette_color) {
-        current_health_palette_color = desired_color;
-        tile_mode2_write_hud_palette_entry(HUD_HEALTH_PALETTE_INDEX, desired_color);
-    }
+    tile_mode2_write_hud_palette_entry(HUD_HEALTH_PALETTE_INDEX, desired_color);
 }
 
 void tile_mode2_set_boss_hud_visible(bool visible)
@@ -766,7 +767,6 @@ void tile_mode2_update_scroll(void)
     }
 
     if (gameplay_transition_active && transition_to_gameplay && !warp_tiles_replaced && fg_scroll_speed_half == fg_scroll_target_half) {
-        tile_mode2_replace_warp_tiles();
         warp_tiles_replaced = true;
         gameplay_transition_active = false;
     } else if (gameplay_transition_active && !transition_to_gameplay && fg_scroll_speed_half == fg_scroll_target_half) {
@@ -782,7 +782,34 @@ void tile_mode2_update_scroll(void)
     if (fg_scroll_y_half >= TILE_SCROLL_WRAP_HALF_PX) {
         fg_scroll_y_half = (int16_t)(fg_scroll_y_half - TILE_SCROLL_WRAP_HALF_PX);
     }
+}
+
+void tile_mode2_commit(void)
+{
+    if (hud_colors_dirty) {
+        hud_colors_dirty = false;
+        xram0_write(XRAM_TILE_HUD_PALETTE, hud_colors, sizeof(hud_colors));
+    }
 
     xram0_poke16(XRAM_TILE_BG_CONFIG + offsetof(mode2_config_t, y_pos_px), (uint16_t)(bg_scroll_y_half / 2));
     xram0_poke16(XRAM_TILE_FG_CONFIG + offsetof(mode2_config_t, y_pos_px), (uint16_t)(fg_scroll_y_half / 2));
+
+    if (warp_tiles_shown != warp_tiles_replaced) {
+        warp_tiles_shown = warp_tiles_replaced;
+        if (warp_tiles_shown) {
+            xram_move(tile_mode2_tile_addr(WARP_TILE_INDEX),
+                      tile_mode2_tile_addr(WARP_TILE_REPLACEMENT_INDEX),
+                      sizeof(warp_tile_backup));
+        } else {
+            xram0_write(tile_mode2_tile_addr(WARP_TILE_INDEX), warp_tile_backup, sizeof(warp_tile_backup));
+        }
+    }
+
+    if (hud_dirty_first <= hud_dirty_last) {
+        xram0_write(XRAM_STARFIELD_HUD_DATA + (unsigned)hud_dirty_first * STARFIELD_HUD_WIDTH,
+                    hud_map[hud_dirty_first],
+                    (unsigned)(hud_dirty_last - hud_dirty_first + 1) * STARFIELD_HUD_WIDTH);
+        hud_dirty_first = STARFIELD_HUD_HEIGHT;
+        hud_dirty_last = 0;
+    }
 }

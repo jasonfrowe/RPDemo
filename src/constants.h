@@ -21,7 +21,6 @@
 
 #define STARFIELD_HUD_WIDTH     40                 // Width of starfield HUD in tiles
 #define STARFIELD_HUD_HEIGHT    30                 // Height of starfield HUD in tiles
-#define STARFIELD_HUD_SIZE      (STARFIELD_HUD_WIDTH * STARFIELD_HUD_HEIGHT) // 1200 bytes
 
 #define STARFIELD_TILE_COUNT    256                // 8x8 4bpp tiles shared by all three tile planes
 

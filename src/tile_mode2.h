@@ -39,5 +39,6 @@ void tile_mode2_set_bonus_pending_total(uint32_t pending_total);
 int16_t tile_mode2_get_bonus_icon_target_x(void);
 int16_t tile_mode2_get_bonus_icon_target_y(uint8_t enemy_type);
 void tile_mode2_update_scroll(void);
+void tile_mode2_commit(void);
 
 #endif // TILE_MODE2_H

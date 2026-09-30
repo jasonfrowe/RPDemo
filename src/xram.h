@@ -231,6 +231,13 @@ typedef MODE2_TILE(4, 8) tile_8x8_t;
 
 typedef struct
 {
+    mode5_sprite_t player;
+    mode5_sprite_t projectile[MAX_PROJECTILES];
+    mode5_sprite_t enemy[MAX_ENEMIES];
+} sprite_configs_t;
+
+typedef struct
+{
     uint16_t player[1 << 4];
     uint16_t tile[1 << 4];
     uint16_t tile_hud[1 << 4];
@@ -246,12 +253,10 @@ typedef struct
     /* First, so the OPL2 registers start on a page boundary. */
     opl_t opl;
 
-    mode5_sprite_t player_config;
     mode2_config_t tile_bg_config;
     mode2_config_t tile_fg_config;
     mode2_config_t tile_hud_config;
-    mode5_sprite_t projectile_config[MAX_PROJECTILES];
-    mode5_sprite_t enemy_config[MAX_ENEMIES];
+    sprite_configs_t sprites;
 
     keyboard_t keyboard;
     gamepad_t gamepad;
@@ -274,12 +279,13 @@ typedef struct
 #define XRAM_OPL offsetof(xram_layout_t, opl)
 _Static_assert((XRAM_OPL & 0xFF) == 0, "The OPL2 registers must start on a page boundary.");
 
-#define XRAM_PLAYER_CONFIG offsetof(xram_layout_t, player_config)
 #define XRAM_TILE_BG_CONFIG offsetof(xram_layout_t, tile_bg_config)
 #define XRAM_TILE_FG_CONFIG offsetof(xram_layout_t, tile_fg_config)
 #define XRAM_TILE_HUD_CONFIG offsetof(xram_layout_t, tile_hud_config)
-#define XRAM_PROJECTILE_CONFIG offsetof(xram_layout_t, projectile_config)
-#define XRAM_ENEMY_CONFIG offsetof(xram_layout_t, enemy_config)
+#define XRAM_SPRITE_CONFIGS offsetof(xram_layout_t, sprites)
+#define XRAM_PLAYER_CONFIG offsetof(xram_layout_t, sprites.player)
+#define XRAM_PROJECTILE_CONFIG offsetof(xram_layout_t, sprites.projectile)
+#define XRAM_ENEMY_CONFIG offsetof(xram_layout_t, sprites.enemy)
 
 #define XRAM_KEYBOARD offsetof(xram_layout_t, keyboard)
 #define XRAM_GAMEPAD offsetof(xram_layout_t, gamepad)
