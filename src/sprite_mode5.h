@@ -5,66 +5,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-// Palette extracted from Sprites/Player.png
-static const uint16_t player_palette[16] = {
-    0x0000, // transparent
-    0xA820,
-    0x0560,
-    0xAD60,
-    0x0035,
-    0xA835,
-    0x02B5,
-    0xAD75,
-    0x52AA,
-    0xFAAA,
-    0x57EA,
-    0xFFEA,
-    0x52BF, // index 12 -- engine glow
-    0xFABF,
-    0x57FF,
-    0xFFFF,
-};
-
-// Palette extracted from Sprites/Projectiles.png
-static const uint16_t projectiles_palette[16] = {
-    0x0000,
-    0xA820,
-    0x0560,
-    0xAD60,
-    0x0035,
-    0xA835,
-    0x037A,
-    0xAD75,
-    0x52AA,
-    0xFAAA,
-    0x4668,
-    0xFFEA,
-    0x18FF,
-    0xFABF,
-    0x57FF,
-    0xFFFF,
-};
-
-// Placeholder palette for Enemies — replace with values extracted from Enemies_4bpp.png
-static const uint16_t enemy_palette[16] = {
-    0x0000,
-    0x0021,
-    0x2974,
-    0x2B25,
-    0x3370,
-    0xAA2F,
-    0x6BAD,
-    0x223D,
-    0x35A7,
-    0x0D7A,
-    0xA32A,
-    0xDD29,
-    0xAD32,
-    0x226A,
-    0x5AE9,
-    0xA269,
-};
-
 void sprite_mode5_init(void);
 void sprite_mode5_init_projectiles(void);
 void sprite_mode5_init_enemies(void);
@@ -81,5 +21,6 @@ void sprite_mode5_show_boss(int16_t x, int16_t y, uint8_t frame_set_base);
 void sprite_mode5_hide_boss(void);
 void sprite_mode5_set_boss_palette_active(bool active);
 void sprite_mode5_set_boss_weakspot_flash(bool active);
+void sprite_mode5_commit(void);
 
 #endif // SPRITE_MODE5_H

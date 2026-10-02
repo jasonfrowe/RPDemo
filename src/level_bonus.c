@@ -120,7 +120,7 @@ void level_bonus_begin(uint8_t current_level, bool boss_defeated)
     enemy_prepare_bonus_icons();
     sprite_mode5_show_player();
 
-    tile_mode2_start_level_bonus_transition();
+    tile_mode2_start_warp_transition();
     music_set_track("ROM:Bonus.vgm");
     if (!boss_defeated) {
         // Boss levels already played this the moment the boss's health hit

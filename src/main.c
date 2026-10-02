@@ -27,12 +27,10 @@ static bool init_graphics(void)
     sprite_mode5_init_enemies();
     projectile_init();
     enemy_init();
-    score_init(); 
+    score_init();
 
     return true;
 }
-
-uint8_t vsync_last = 0;
 
 int main(void)
 {
@@ -52,12 +50,18 @@ int main(void)
     gameplay_init();
 
     // Main loop
+    uint8_t vsync_last = 0;
     while (true) {
         // 1. SYNC
-        if (RIA.vsync == vsync_last) continue;
-        vsync_last = RIA.vsync;
+        uint8_t vsync = ria_vsync();
+        if (vsync == vsync_last) continue;
+        vsync_last = vsync;
 
-        // 2. INPUT
+        // 2. COMMIT
+        sprite_mode5_commit();
+        tile_mode2_commit();
+
+        // 3. INPUT
         handle_input();
 
         gameplay_frame(is_action_pressed(ACTION_START), is_action_pressed(ACTION_PAUSE));

@@ -5,7 +5,7 @@
 
 // Palette extracted from Sprites/Player.png
 static const uint16_t player_4bpp[16] = {
-    0x0020,
+    0x0000,
     0xA820,
     0x0560,
     0xAD60,

@@ -4,7 +4,7 @@ Fight through 7 levels of enemy waves and a boss at the end of each.
 Keyboard
   Move    W A S D, arrow keys, or keypad (7 9 1 3 move diagonally)
   Fire    any other key (hold for auto-fire)
-  Pause   P or Pause
+  Pause   P, Pause or Enter
 
 Gamepad
   Move    D-Pad or left stick

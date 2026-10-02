@@ -64,8 +64,16 @@ _Static_assert(GP_CONTROL_Y == 7 && GP_CONTROL_SELECT == 10 && GP_CONTROL_START 
 #define GP_FIELD_BTN0    2  // Face Buttons
 #define GP_FIELD_BTN1    3  // Triggers/Select/Start
 
+_Static_assert(offsetof(gamepad_player_t, dpad) == GP_FIELD_DPAD &&
+               offsetof(gamepad_player_t, sticks) == GP_FIELD_STICKS &&
+               offsetof(gamepad_player_t, btn0) == GP_FIELD_BTN0 &&
+               offsetof(gamepad_player_t, btn1) == GP_FIELD_BTN1,
+               "GP_FIELD_* values are gamepad_player_t offsets");
+
 // The direction bits of the dpad field, without its type, sticks and connected bits.
 #define GP_DPAD_MASK (GAMEPAD_DPAD_UP | GAMEPAD_DPAD_DOWN | GAMEPAD_DPAD_LEFT | GAMEPAD_DPAD_RIGHT)
+
+#define JOYSTICK_CONFIG_FILE "JOYSTICK_SH.DAT"
 
 // A gamepad button mapping as stored in JOYSTICK_SH.DAT. The definitive
 // on-disk layout, shared by input.c (reader) and gamepad_mapper.c (writer)
@@ -76,17 +84,12 @@ typedef struct {
     uint8_t mask;
 } JoystickMapping;
 
-// Reads the first gamepad's raw digital state into pad[GP_FIELD_DPAD..GP_FIELD_BTN1].
-// pad[GP_FIELD_DPAD] still carries the pad's type/connected bits; mask with
-// GP_DPAD_MASK for direction bits only. The definitive byte order for
-// XRAM_GAMEPAD, shared by input.c and gamepad_mapper.c.
+// Reads the raw digital state of the first gamepad into pad[GP_FIELD_DPAD..GP_FIELD_BTN1].
+// pad[GP_FIELD_DPAD] also contains the type and connected bits; mask with
+// GP_DPAD_MASK for the direction bits.
 static inline void gamepad_read_raw(uint8_t pad[4])
 {
-    RIA.addr0 = XRAM_GAMEPAD;
-    RIA.step0 = 1;
-    for (uint8_t i = 0; i < 4; i++) {
-        pad[i] = RIA.rw0;
-    }
+    xram0_read(pad, XRAM_GAMEPAD, 4);
 }
 
 extern void init_input_system(void);

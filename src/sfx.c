@@ -7,32 +7,32 @@
 #include "opl.h"
 #include "player_controller.h"
 
-// Every SFX clip lives preloaded in XRAM at XRAM_SFX_DATA (xram.h), baked
+// Every SFX clip is preloaded in XRAM at XRAM_SFX_DATA (xram.h), baked
 // into the ROM image at build time exactly like the sprite/tile bitmaps
-// beside it (see CMakeLists.txt's XRAM Assets section) -- not opened as a
-// ROM: file the way music streams are. That matters specifically for SFX:
-// the RP6502 ROM: filesystem's open() scans the whole named-asset
-// directory linearly and only reads on demand (rp6502/src/core/rom/
-// asset.c's own comment: "no index and no asset bytes are held in RAM"),
-// a fixed cost regardless of file size, paid on *every single trigger* --
-// music amortizes that one-time cost over minutes of streaming a track,
-// but a bullet fired 60 times a second cannot. Reading straight out of
-// XRAM (this file's sfx_xram_player_t) skips that entirely: no open(),
-// no directory scan, no read() syscall, just a couple of RIA register
-// accesses per command byte, already at least as cheap as a single VGM
+// beside it (see the XRAM Assets section of CMakeLists.txt) -- not opened
+// as a ROM: file the way music streams are. That matters specifically for
+// SFX: open() on the RP6502 ROM: filesystem scans the whole named-asset
+// directory linearly and only reads on demand (the comment in
+// rp6502/src/core/rom/asset.c: "no index and no asset bytes are held in
+// RAM"), a fixed cost regardless of file size, paid on *every single
+// trigger* -- music amortizes that one-time cost over minutes of streaming
+// a track, but a bullet fired 60 times a second cannot. Reading straight
+// out of XRAM (sfx_xram_player_t below) skips that entirely: no open(),
+// no directory scan, no read() syscall, just an xram0_peek8() and an
+// xram0_peek16() per command, already at least as cheap as a single VGM
 // buffer refill and now paid at most once per channel per frame (see
 // retriggered_this_frame below).
 //
-// The command format is the same one generate_sfx.py's SfxBuilder emits
+// The command format is the same one SfxBuilder in generate_sfx.py emits
 // for the standalone .vgm files (0x5A reg/val, 0x61 16-bit wait, 0x66
-// end) minus the 0x40-byte VGM file header -- vgm.c's fuller opcode set
-// (loop points, data blocks, skip-N) was never needed here since this
-// tool never emits any of that, so this reader only understands the three
+// end) minus the 0x40-byte VGM file header -- the fuller opcode set in
+// vgm.c (loop points, data blocks, skip-N) was never needed here since
+// that tool never emits any of it, so this reader only handles the three
 // opcodes that actually appear.
 
 // One 60Hz frame's worth of "samples" (this project's VGM convention is
 // always 44100 Hz regardless of actual playback rate -- see vgm.c),
-// matching music_update()'s own budget. These clips are all well under a
+// matching the budget in music_update(). These clips are all well under a
 // second.
 #define SFX_SAMPLE_BUDGET 735u
 
@@ -48,26 +48,20 @@ typedef struct {
     bool active;
 } sfx_xram_player_t;
 
-static uint8_t sfx_xram_read_byte(sfx_xram_player_t *p) {
-    RIA.addr0 = p->read_ptr++;
-    return RIA.rw0;
-}
-
 // Returns false once the clip has ended (0x66) -- the caller stops calling
-// this for the frame, same shape as vgm.c's parse_next_command.
+// this for the frame, same shape as parse_next_command in vgm.c.
 static bool sfx_xram_parse_next(sfx_xram_player_t *p) {
-    uint8_t cmd = sfx_xram_read_byte(p);
+    // 0x5A and 0x61 are each followed by two operand bytes.
+    uint8_t cmd = xram0_peek8(p->read_ptr);
+    uint16_t operand = xram0_peek16(p->read_ptr + 1);
+    p->read_ptr += 3;
 
     if (cmd == 0x5A) {
-        uint8_t reg = sfx_xram_read_byte(p);
-        uint8_t val = sfx_xram_read_byte(p);
-        opl_write(reg, val);
+        opl_write((uint8_t)operand, (uint8_t)(operand >> 8));
         return true;
     }
     if (cmd == 0x61) {
-        uint8_t lo = sfx_xram_read_byte(p);
-        uint8_t hi = sfx_xram_read_byte(p);
-        p->wait_samples = (uint16_t)((uint16_t)lo | ((uint16_t)hi << 8));
+        p->wait_samples = operand;
         return true;
     }
     // 0x66 (end) or anything else unexpected: stop rather than run off
@@ -95,7 +89,7 @@ static void sfx_xram_advance(sfx_xram_player_t *p, uint16_t sample_budget) {
 }
 
 // One of the two independent one-shot channels (7: player, 8: enemy --
-// see sfx.h's module comment). Each tracks its own priority so a tier only
+// see the module comment in sfx.h). Each tracks its own priority so a tier only
 // ever competes against events on the SAME channel.
 typedef struct {
     sfx_xram_player_t player;
@@ -133,7 +127,7 @@ static void sfx_channel_play(sfx_channel_t *ch, uint16_t sfx_addr, uint8_t prior
     if (ch->retriggered_this_frame && priority <= ch->priority) {
         // Already accepted a new trigger this frame -- drop a same-or-
         // lower-priority repeat rather than restart again (see
-        // retriggered_this_frame's comment). A genuine priority upgrade
+        // the comment on retriggered_this_frame). A genuine priority upgrade
         // still gets through.
         return;
     }
@@ -158,12 +152,6 @@ static void sfx_channel_update(sfx_channel_t *ch) {
     if (!ch->player.active) {
         ch->priority = 0;
     }
-}
-
-static void sfx_channel_stop(sfx_channel_t *ch) {
-    ch->player.active = false;
-    opl_write(ch->silence_reg, 0x00);
-    ch->priority = 0;
 }
 
 void sfx_init(void) {
@@ -210,12 +198,6 @@ void sfx_update(void) {
     sfx_channel_update(&g_player_ch);
     sfx_channel_update(&g_enemy_ch);
     sfx_update_low_energy();
-}
-
-void sfx_stop(void) {
-    sfx_channel_stop(&g_player_ch);
-    sfx_channel_stop(&g_enemy_ch);
-    g_low_energy_timer = 0;
 }
 
 // The level-bonus screen tallies score over the same player channel this

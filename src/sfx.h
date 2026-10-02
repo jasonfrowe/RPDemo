@@ -41,7 +41,6 @@ void sfx_init(void);
 void sfx_play_player(uint16_t sfx_addr, uint8_t priority); // channel 7
 void sfx_play_enemy(uint16_t sfx_addr, uint8_t priority);  // channel 8
 void sfx_update(void);
-void sfx_stop(void);
 void sfx_set_low_energy_muted(bool muted);
 
 #endif

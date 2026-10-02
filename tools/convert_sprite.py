@@ -132,23 +132,29 @@ def pack_row(indices: list, bpp: int) -> bytes:
 # ---------------------------------------------------------------------------
 
 def extract_palette(use_im: Image.Image, bpp: int) -> list:
+    """RP6502 colors for the image's palette; the PNG's transparent index is 0."""
     max_colors = 1 << bpp
     raw = use_im.getpalette() or []
+    transparency = use_im.info.get("transparency")
     colors = []
     for i in range(max_colors):
         base = i * 3
-        if base + 2 < len(raw):
-            colors.append((raw[base], raw[base + 1], raw[base + 2]))
+        rgb = tuple(raw[base:base + 3]) if base + 2 < len(raw) else (0, 0, 0)
+        if isinstance(transparency, int):
+            alpha = 0 if i == transparency else 255
+        elif isinstance(transparency, bytes) and i < len(transparency):
+            alpha = transparency[i]
         else:
-            colors.append((0, 0, 0))
+            alpha = 255
+        colors.append(encode_rgb555_direct(*rgb, alpha))
     return colors
 
 
 def write_palette_bin(path: str, colors: list) -> None:
     ensure_parent(path)
     with open(path, "wb") as f:
-        for r, g, b in colors:
-            f.write(encode_rgb555(r, g, b).to_bytes(2, "little"))
+        for color in colors:
+            f.write(color.to_bytes(2, "little"))
 
 
 def write_palette_header(path: str, symbol: str, colors: list, source_path: str) -> None:
@@ -160,8 +166,8 @@ def write_palette_header(path: str, symbol: str, colors: list, source_path: str)
         f.write("#include <stdint.h>\n\n")
         f.write(f"// Palette extracted from {source_path}\n")
         f.write(f"static const uint16_t {symbol}[{len(colors)}] = {{\n")
-        for r, g, b in colors:
-            f.write(f"    0x{encode_rgb555(r, g, b):04X},\n")
+        for color in colors:
+            f.write(f"    0x{color:04X},\n")
         f.write("};\n\n")
         f.write(f"#endif // {guard}\n")
 

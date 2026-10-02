@@ -5,11 +5,8 @@
 #include <rp6502.h>
 #include <stdio.h>
 #include <stdbool.h>
-#include <stdlib.h>
 #include <string.h>
 #include "input.h"
-
-#define JOYSTICK_CONFIG_FILE "JOYSTICK_SH.DAT"
 
 static const char* prompt_labels[] = {
     "MOVE UP",
@@ -44,64 +41,48 @@ _Static_assert(sizeof(action_map) == sizeof(prompt_labels) / sizeof(prompt_label
 static JoystickMapping mappings[GP_CONTROL_COUNT];
 static uint8_t num_mappings = 0;
 
-static void wait_for_all_released(void)
+static void wait_frame(void)
 {
-    uint8_t vsync_last = RIA.vsync;
-    while (true) {
-        if (RIA.vsync == vsync_last) continue;
-        vsync_last = RIA.vsync;
-
-        uint8_t pad[4];
-        gamepad_read_raw(pad);
-        uint8_t d  = pad[GP_FIELD_DPAD] & GP_DPAD_MASK;
-        uint8_t s  = pad[GP_FIELD_STICKS];
-        uint8_t b0 = pad[GP_FIELD_BTN0];
-        uint8_t b1 = pad[GP_FIELD_BTN1];
-        if (d == 0 && s == 0 && b0 == 0 && b1 == 0) return;
+    uint8_t vsync = ria_vsync();
+    while (ria_vsync() == vsync) {
     }
 }
 
-static bool wait_for_any_button(uint8_t* field, uint8_t* mask)
+static void read_pad(uint8_t pad[4])
 {
-    uint8_t vsync_last = RIA.vsync;
-    uint8_t prev_dpad = 0, prev_sticks = 0, prev_btn0 = 0, prev_btn1 = 0;
+    gamepad_read_raw(pad);
+    pad[GP_FIELD_DPAD] &= GP_DPAD_MASK;
+}
+
+static void wait_for_all_released(void)
+{
+    uint8_t pad[4];
+    do {
+        wait_frame();
+        read_pad(pad);
+    } while (pad[GP_FIELD_DPAD] | pad[GP_FIELD_STICKS] | pad[GP_FIELD_BTN0] | pad[GP_FIELD_BTN1]);
+}
+
+static void wait_for_any_button(uint8_t* field, uint8_t* mask)
+{
+    uint8_t prev[4] = {0};
 
     while (true) {
-        if (RIA.vsync == vsync_last) continue;
-        vsync_last = RIA.vsync;
+        wait_frame();
 
         uint8_t pad[4];
-        gamepad_read_raw(pad);
-        uint8_t d = pad[GP_FIELD_DPAD] & GP_DPAD_MASK;
-        uint8_t s = pad[GP_FIELD_STICKS];
-        uint8_t b0 = pad[GP_FIELD_BTN0];
-        uint8_t b1 = pad[GP_FIELD_BTN1];
+        read_pad(pad);
 
-        if ((d & (uint8_t)~prev_dpad) != 0) {
-            *field = GP_FIELD_DPAD;
-            *mask = d & (uint8_t)~prev_dpad;
-            return true;
-        }
-        if ((s & (uint8_t)~prev_sticks) != 0) {
-            *field = GP_FIELD_STICKS;
-            *mask = s & (uint8_t)~prev_sticks;
-            return true;
-        }
-        if ((b0 & (uint8_t)~prev_btn0) != 0) {
-            *field = GP_FIELD_BTN0;
-            *mask = b0 & (uint8_t)~prev_btn0;
-            return true;
-        }
-        if ((b1 & (uint8_t)~prev_btn1) != 0) {
-            *field = GP_FIELD_BTN1;
-            *mask = b1 & (uint8_t)~prev_btn1;
-            return true;
+        for (uint8_t f = GP_FIELD_DPAD; f <= GP_FIELD_BTN1; f++) {
+            uint8_t pressed = pad[f] & (uint8_t)~prev[f];
+            if (pressed != 0) {
+                *field = f;
+                *mask = pressed;
+                return;
+            }
         }
 
-        prev_dpad = d;
-        prev_sticks = s;
-        prev_btn0 = b0;
-        prev_btn1 = b1;
+        memcpy(prev, pad, sizeof(prev));
     }
 }
 
@@ -110,7 +91,6 @@ int main(void)
     printf("\f");
     printf("=== RPStarHopper Gamepad Mapper ===\n\n");
 
-    xreg_ria_keyboard(XRAM_KEYBOARD);
     xreg_ria_gamepad(XRAM_GAMEPAD);
 
     printf("Press any button to begin...\n");
@@ -128,12 +108,10 @@ int main(void)
         mappings[num_mappings].mask = m;
         num_mappings++;
 
-        while (true) {
-            uint8_t pad[4];
-            gamepad_read_raw(pad);
-            pad[GP_FIELD_DPAD] &= GP_DPAD_MASK;
-            if ((pad[f] & m) == 0) break;
-        }
+        uint8_t pad[4];
+        do {
+            read_pad(pad);
+        } while (pad[f] & m);
     }
 
     FILE* fp = fopen(JOYSTICK_CONFIG_FILE, "wb");

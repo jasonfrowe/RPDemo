@@ -55,10 +55,10 @@ typedef enum {
 #define VICTORY_PARADE_BOSS_W (BOSS_GRID_COLS * ENEMY_SPRITE_SIZE_PX)
 #define VICTORY_PARADE_BOSS_H (BOSS_GRID_ROWS * ENEMY_SPRITE_SIZE_PX)
 #define VICTORY_PARADE_ENEMY_HALF (ENEMY_SPRITE_SIZE_PX / 2)
-// BOSS_START_X/Y (constants.h) is where a real fight rests the boss --
-// right under the HUD, which on this screen is exactly where the "STAR
-// HOPPER" logo and PRESS START/HISCORE text live (baked into the HUD ROM
-// template restored at the top of this screen, not drawn by game code).
+// BOSS_START_X/Y (constants.h) is the boss position in a real fight --
+// right under the HUD, which on this screen holds the "STAR HOPPER" logo
+// (part of the default HUD map that tile_mode2_restore_hud() copies back
+// at the top of this screen) and the PRESS BUTTON prompt.
 // The parade needs to clear all of that, so it gets its own, lower resting
 // row instead of reusing BOSS_START_Y -- BOSS_START_X (horizontal
 // centering) is still correct as-is.
@@ -86,7 +86,7 @@ static uint8_t parade_orbit_loops = 0;
 static void victory_parade_hide_enemies(void)
 {
     for (uint8_t i = 0; i < VICTORY_PARADE_ORBIT_ENEMY_COUNT; ++i) {
-        sprite_mode5_set_enemy(i, -32, -32, 0);
+        sprite_mode5_set_enemy(i, SPRITE_OFFSCREEN_PX, SPRITE_OFFSCREEN_PX, 0);
     }
 }
 
@@ -207,8 +207,8 @@ static void victory_parade_update(void)
 static void gameplay_update_victory_state(gameplay_runtime_t *state)
 {
     if (!state->game_over_letters_started) {
-        tile_mode2_start_game_over_transition();
-        tile_mode2_restore_hud_from_rom();
+        tile_mode2_start_warp_transition();
+        tile_mode2_restore_hud();
         tile_mode2_set_score(score_get());
         tile_mode2_set_multiplier(score_get_multiplier());
         tile_mode2_set_paused_banner(false);
@@ -269,8 +269,8 @@ static void gameplay_update_defeat_state(gameplay_runtime_t *state)
                 if (state->game_over_scroll_delay_timer < GAME_OVER_SCROLL_START_DELAY_FRAMES) {
                     state->game_over_scroll_delay_timer++;
                 } else {
-                    tile_mode2_start_game_over_transition();
-                    tile_mode2_restore_hud_from_rom();
+                    tile_mode2_start_warp_transition();
+                    tile_mode2_restore_hud();
                     tile_mode2_set_score(score_get());
                     tile_mode2_set_multiplier(score_get_multiplier());
                     tile_mode2_set_paused_banner(false);

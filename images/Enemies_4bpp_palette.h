@@ -5,7 +5,7 @@
 
 // Palette extracted from Sprites/Enemies.png
 static const uint16_t enemies_4bpp[16] = {
-    0x0020,
+    0x0000,
     0x0021,
     0x2974,
     0x2B25,

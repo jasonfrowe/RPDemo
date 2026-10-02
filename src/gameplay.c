@@ -160,8 +160,8 @@ void gameplay_reset_to_title_scene(gameplay_runtime_t *state)
     projectile_init();
     enemy_init();
     player_controller_reset_for_new_run();
-    tile_mode2_start_game_over_transition();
-    tile_mode2_restore_hud_from_rom();
+    tile_mode2_start_warp_transition();
+    tile_mode2_restore_hud();
     tile_mode2_set_score(score_get());
     tile_mode2_set_multiplier(score_get_multiplier());
     tile_mode2_set_paused_banner(false);

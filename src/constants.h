@@ -7,6 +7,8 @@
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 240
 
+#define SPRITE_OFFSCREEN_PX (-32)
+
 // Sprite and tile data. The XRAM layout that holds them is src/xram.h.
 #define PLAYER_SPRITE_SIZE_PX   16                 // Player sprite is 16x16 pixels
 #define PLAYER_FRAME_COUNT      6                  // idle, right, left, explode frames (3, 4, 5)
@@ -19,7 +21,6 @@
 
 #define STARFIELD_HUD_WIDTH     40                 // Width of starfield HUD in tiles
 #define STARFIELD_HUD_HEIGHT    30                 // Height of starfield HUD in tiles
-#define STARFIELD_HUD_SIZE      (STARFIELD_HUD_WIDTH * STARFIELD_HUD_HEIGHT) // 1200 bytes
 
 #define STARFIELD_TILE_COUNT    256                // 8x8 4bpp tiles shared by all three tile planes
 
@@ -54,7 +55,6 @@
 #define HEALTH_BAR_TILE_X          17
 #define HEALTH_BAR_TILE_Y           2
 #define HEALTH_BAR_TILE_COUNT       6
-#define HEALTH_BAR_TILE_FULL_INDEX 39
 #define HEALTH_BAR_TILE_EMPTY_INDEX 47
 #define HEALTH_PER_BAR_TILE         8
 
@@ -65,11 +65,7 @@
 
 // Boss stage constants (data only; behavior wired separately)
 #define BOSS_MAX_HEALTH 48
-#define BOSS_WAVE_KILL_TARGET 15
-#define BOSS_VULNERABLE_DAMAGE_CAP 24
-#define BOSS_VULNERABLE_TIMEOUT_FRAMES (30 * 60)
 #define BOSS_FIGHT_TIMEOUT_FRAMES (4 * 60 * 60)
-#define BOSS_VICTORY_HOLD_FRAMES (3 * 60)
 
 #define BOSS_GRID_COLS 3
 #define BOSS_GRID_ROWS 2

@@ -134,43 +134,6 @@ uint16_t score_get_level_kills(uint8_t enemy_type)
     return g_level_kills[enemy_type];
 }
 
-uint16_t score_get_level_total_kills(void)
-{
-    uint16_t total = 0;
-
-    for (uint8_t i = 0; i < ENEMY_TYPE_COUNT; ++i) {
-        total = (uint16_t)(total + g_level_kills[i]);
-    }
-
-    return total;
-}
-
-uint32_t score_add_level_bonus(uint8_t level_multiplier)
-{
-    uint32_t added = 0;
-
-    if (level_multiplier == 0) {
-        level_multiplier = 1;
-    }
-
-    for (uint8_t i = 0; i < ENEMY_TYPE_COUNT; ++i) {
-        uint32_t base = score_points_for_enemy(i);
-        uint32_t subtotal = (uint32_t)g_level_kills[i] * base * level_multiplier;
-        added += subtotal;
-    }
-
-    if (g_score < 999999u) {
-        g_score += added;
-        if (g_score > 999999u) {
-            g_score = 999999u;
-        }
-    }
-
-    score_try_update_hiscore();
-    tile_mode2_set_score(g_score);
-    return added;
-}
-
 uint32_t score_get(void)
 {
     return g_score;

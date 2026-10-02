@@ -26,7 +26,7 @@
 typedef struct
 {
     uint8_t keys[32];
-} keyboard_t;
+} keyboard_t; /* layout */
 
 /* RIA Gamepads */
 
@@ -75,20 +75,22 @@ typedef struct
 
 typedef struct
 {
-    struct
-    {
-        uint8_t dpad;
-        uint8_t sticks;
-        uint8_t btn0;
-        uint8_t btn1;
-        int8_t lx;
-        int8_t ly;
-        int8_t rx;
-        int8_t ry;
-        uint8_t l2;
-        uint8_t r2;
-    } player[GAMEPAD_PLAYERS];
-} gamepad_t;
+    uint8_t dpad;
+    uint8_t sticks;
+    uint8_t btn0;
+    uint8_t btn1;
+    int8_t lx;
+    int8_t ly;
+    int8_t rx;
+    int8_t ry;
+    uint8_t l2;
+    uint8_t r2;
+} gamepad_player_t;
+
+typedef struct
+{
+    gamepad_player_t player[GAMEPAD_PLAYERS];
+} gamepad_t; /* layout */
 
 /* RIA OPL2 */
 
@@ -97,7 +99,7 @@ typedef struct
 typedef struct
 {
     uint8_t reg[256];
-} opl_t;
+} opl_t; /* layout */
 
 /* VGA Canvas */
 
@@ -152,7 +154,7 @@ typedef struct
     uint16_t xram_data_ptr;
     uint16_t xram_palette_ptr;
     uint16_t xram_tile_ptr;
-} mode2_config_t;
+} mode2_config_t; /* layout */
 
 /* VGA Mode 5: Sprite */
 
@@ -204,7 +206,7 @@ typedef struct
     int16_t y_pos_px;
     uint16_t xram_sprite_ptr;
     uint16_t palette_ptr;
-} mode5_sprite_t;
+} mode5_sprite_t; /* layout */
 
 typedef struct
 {
@@ -214,7 +216,7 @@ typedef struct
     uint16_t palette_ptr;
     uint8_t width_height;
     uint8_t options;
-} mode5_csprite_t;
+} mode5_csprite_t; /* layout */
 
 /* Star Hopper's XRAM. Every asset and config is 4-bit color, */
 /* so the images are 16-color and each palette has 1 << 4 entries. */
@@ -229,31 +231,43 @@ typedef MODE2_TILE(4, 8) tile_8x8_t;
 
 typedef struct
 {
+    mode5_sprite_t player;
+    mode5_sprite_t projectile[MAX_PROJECTILES];
+    mode5_sprite_t enemy[MAX_ENEMIES];
+} sprite_configs_t;
+
+typedef struct
+{
+    uint16_t player[1 << 4];
+    uint16_t tile[1 << 4];
+    uint16_t tile_hud[1 << 4];
+    uint16_t projectile[1 << 4];
+    uint16_t enemy[1 << 4];
+} palettes_t;
+
+_Static_assert(sizeof(palettes_t) <= 1024,
+               "Palettes beyond 1 KB collide in the 1 KB palette cache of the FPGA VGA.");
+
+typedef struct
+{
     /* First, so the OPL2 registers start on a page boundary. */
     opl_t opl;
 
-    mode5_sprite_t player_config;
     mode2_config_t tile_bg_config;
     mode2_config_t tile_fg_config;
     mode2_config_t tile_hud_config;
-    mode5_sprite_t projectile_config[MAX_PROJECTILES];
-    mode5_sprite_t enemy_config[MAX_ENEMIES];
-
-    uint16_t player_palette[1 << 4];
-    uint16_t tile_bg_palette[1 << 4];
-    uint16_t tile_fg_palette[1 << 4];
-    uint16_t tile_hud_palette[1 << 4];
-    uint16_t projectile_palette[1 << 4];
-    uint16_t enemy_palette[1 << 4];
+    sprite_configs_t sprites;
 
     keyboard_t keyboard;
     gamepad_t gamepad;
 
     /* Loaded from the ROM by CMakeLists.txt. */
+    palettes_t palettes;
     sprite_16x16_t player_data[PLAYER_FRAME_COUNT];
     uint8_t starfield_bg_data[STARFIELD_BG_HEIGHT][STARFIELD_BG_WIDTH];
     uint8_t starfield_fg_data[STARFIELD_FG_HEIGHT][STARFIELD_FG_WIDTH];
     uint8_t starfield_hud_data[STARFIELD_HUD_HEIGHT][STARFIELD_HUD_WIDTH];
+    uint8_t starfield_hud_default[STARFIELD_HUD_HEIGHT][STARFIELD_HUD_WIDTH];
     tile_8x8_t starfield_tiles_data[STARFIELD_TILE_COUNT];
     sprite_8x8_t projectile_data[PROJECTILE_FRAME_COUNT];
     sprite_16x16_t enemy_data[ENEMY_FRAME_COUNT];
@@ -265,27 +279,27 @@ typedef struct
 #define XRAM_OPL offsetof(xram_layout_t, opl)
 _Static_assert((XRAM_OPL & 0xFF) == 0, "The OPL2 registers must start on a page boundary.");
 
-#define XRAM_PLAYER_CONFIG offsetof(xram_layout_t, player_config)
 #define XRAM_TILE_BG_CONFIG offsetof(xram_layout_t, tile_bg_config)
 #define XRAM_TILE_FG_CONFIG offsetof(xram_layout_t, tile_fg_config)
 #define XRAM_TILE_HUD_CONFIG offsetof(xram_layout_t, tile_hud_config)
-#define XRAM_PROJECTILE_CONFIG offsetof(xram_layout_t, projectile_config)
-#define XRAM_ENEMY_CONFIG offsetof(xram_layout_t, enemy_config)
-
-#define XRAM_PLAYER_PALETTE offsetof(xram_layout_t, player_palette)
-#define XRAM_TILE_BG_PALETTE offsetof(xram_layout_t, tile_bg_palette)
-#define XRAM_TILE_FG_PALETTE offsetof(xram_layout_t, tile_fg_palette)
-#define XRAM_TILE_HUD_PALETTE offsetof(xram_layout_t, tile_hud_palette)
-#define XRAM_PROJECTILE_PALETTE offsetof(xram_layout_t, projectile_palette)
-#define XRAM_ENEMY_PALETTE offsetof(xram_layout_t, enemy_palette)
+#define XRAM_SPRITE_CONFIGS offsetof(xram_layout_t, sprites)
+#define XRAM_PLAYER_CONFIG offsetof(xram_layout_t, sprites.player)
+#define XRAM_PROJECTILE_CONFIG offsetof(xram_layout_t, sprites.projectile)
+#define XRAM_ENEMY_CONFIG offsetof(xram_layout_t, sprites.enemy)
 
 #define XRAM_KEYBOARD offsetof(xram_layout_t, keyboard)
 #define XRAM_GAMEPAD offsetof(xram_layout_t, gamepad)
 
+#define XRAM_PLAYER_PALETTE offsetof(xram_layout_t, palettes.player)
+#define XRAM_TILE_PALETTE offsetof(xram_layout_t, palettes.tile)
+#define XRAM_TILE_HUD_PALETTE offsetof(xram_layout_t, palettes.tile_hud)
+#define XRAM_PROJECTILE_PALETTE offsetof(xram_layout_t, palettes.projectile)
+#define XRAM_ENEMY_PALETTE offsetof(xram_layout_t, palettes.enemy)
 #define XRAM_PLAYER_DATA offsetof(xram_layout_t, player_data)
 #define XRAM_STARFIELD_BG_DATA offsetof(xram_layout_t, starfield_bg_data)
 #define XRAM_STARFIELD_FG_DATA offsetof(xram_layout_t, starfield_fg_data)
 #define XRAM_STARFIELD_HUD_DATA offsetof(xram_layout_t, starfield_hud_data)
+#define XRAM_STARFIELD_HUD_DEFAULT offsetof(xram_layout_t, starfield_hud_default)
 #define XRAM_STARFIELD_TILES_DATA offsetof(xram_layout_t, starfield_tiles_data)
 #define XRAM_PROJECTILE_DATA offsetof(xram_layout_t, projectile_data)
 #define XRAM_ENEMY_DATA offsetof(xram_layout_t, enemy_data)

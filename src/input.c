@@ -4,10 +4,8 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
-#include "usb_hid_keys.h"
+#include "hidkeys.h"
 #include "input.h"
-
-#define JOYSTICK_CONFIG_FILE "JOYSTICK_SH.DAT"
 
 // Keycodes 0-3 of the keyboard bitmap are state, not keys: no key pressed,
 // and the Num, Caps and Scroll Lock lamps.
@@ -38,11 +36,11 @@ static const GamepadBinding default_bindings[GP_CONTROL_COUNT][2] = {
 // so the D-Pad, the left stick and the usual buttons always work.
 static GamepadBinding saved_bindings[GP_CONTROL_COUNT];
 
-static const uint8_t up_keys[]    = {KEY_W, KEY_UP,    KEY_KP8, KEY_KP7, KEY_KP9};
-static const uint8_t down_keys[]  = {KEY_S, KEY_DOWN,  KEY_KP2, KEY_KP1, KEY_KP3};
-static const uint8_t left_keys[]  = {KEY_A, KEY_LEFT,  KEY_KP4, KEY_KP7, KEY_KP1};
-static const uint8_t right_keys[] = {KEY_D, KEY_RIGHT, KEY_KP6, KEY_KP9, KEY_KP3};
-static const uint8_t pause_keys[] = {KEY_P, KEY_PAUSE, KEY_ENTER};
+static const uint8_t up_keys[]    = {HID_KEY_W, HID_KEY_ARROW_UP,    HID_KEY_KEYPAD_8, HID_KEY_KEYPAD_7, HID_KEY_KEYPAD_9};
+static const uint8_t down_keys[]  = {HID_KEY_S, HID_KEY_ARROW_DOWN,  HID_KEY_KEYPAD_2, HID_KEY_KEYPAD_1, HID_KEY_KEYPAD_3};
+static const uint8_t left_keys[]  = {HID_KEY_A, HID_KEY_ARROW_LEFT,  HID_KEY_KEYPAD_4, HID_KEY_KEYPAD_7, HID_KEY_KEYPAD_1};
+static const uint8_t right_keys[] = {HID_KEY_D, HID_KEY_ARROW_RIGHT, HID_KEY_KEYPAD_6, HID_KEY_KEYPAD_9, HID_KEY_KEYPAD_3};
+static const uint8_t pause_keys[] = {HID_KEY_P, HID_KEY_PAUSE,       HID_KEY_ENTER};
 
 // Keyboard state, copied from XRAM each frame
 static keyboard_t keyboard;
@@ -145,12 +143,7 @@ void handle_input(void)
 {
     actions = 0;
 
-    // Read all keyboard state bytes
-    RIA.addr0 = XRAM_KEYBOARD;
-    RIA.step0 = 1;
-    for (uint8_t i = 0; i < sizeof(keyboard.keys); i++) {
-        keyboard.keys[i] = RIA.rw0;
-    }
+    xram0_read(&keyboard, XRAM_KEYBOARD, sizeof(keyboard));
 
     if (!KEYBOARD_PRESSED(keyboard.keys, KEYBOARD_NO_KEY)) {
         bool fire_key = false;
@@ -177,8 +170,6 @@ void handle_input(void)
         set_action(ACTION_START, fire_key || move_up || move_down || move_left || move_right || pause_key);
     }
 
-    // Read the first gamepad's digital state: dpad, sticks, btn0, btn1,
-    // indexed by GP_FIELD_*.
     uint8_t pad[4];
     gamepad_read_raw(pad);
 

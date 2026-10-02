@@ -856,6 +856,8 @@ void gameplay_boss_update(gameplay_runtime_t *state)
         boss_wave_slide_active = false;
         boss_wave_slide_phase = BOSS_WAVE_SLIDE_PHASE_SINK_TO_BOTTOM;
         enemy_clear_all();
+        // enemy_clear_all() also hides the boss slots.
+        sprite_mode5_show_boss(boss_x, boss_y, boss_frame_set_a_base);
         projectile_init();
         sprite_mode5_set_boss_weakspot_flash(false);
         return;
@@ -875,6 +877,7 @@ void gameplay_boss_update(gameplay_runtime_t *state)
         boss_wave_slide_active = false;
         projectile_init();
         enemy_clear_all();
+        sprite_mode5_show_boss(boss_x, boss_y, boss_frame_set);
         player_controller_reset_damage_state();
         tile_mode2_set_level_complete_banner(false);
         sprite_mode5_set_boss_weakspot_flash(false);

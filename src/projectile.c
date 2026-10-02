@@ -278,13 +278,13 @@ static void projectile_deactivate(uint8_t slot)
 {
     projectiles[slot].active = false;
     projectiles[slot].owner = PROJECTILE_OWNER_NONE;
-    projectiles[slot].x_q8 = TO_Q8(-32);
-    projectiles[slot].y_q8 = TO_Q8(-32);
+    projectiles[slot].x_q8 = TO_Q8(SPRITE_OFFSCREEN_PX);
+    projectiles[slot].y_q8 = TO_Q8(SPRITE_OFFSCREEN_PX);
     projectiles[slot].vx_q8 = 0;
     projectiles[slot].vy_q8 = 0;
     projectiles[slot].frame_index = PLAYER_PROJECTILE_FRAME;
     projectiles[slot].anim_tick = 0;
-    sprite_mode5_set_projectile_position(slot, -32, -32);
+    sprite_mode5_set_projectile_position(slot, SPRITE_OFFSCREEN_PX, SPRITE_OFFSCREEN_PX);
 }
 
 static bool projectile_is_offscreen_enemy(uint8_t slot)
